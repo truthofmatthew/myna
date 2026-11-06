@@ -48,7 +48,7 @@ private struct MenuIcon: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Image(systemName: connected ? "candybarphone.fill" : "candybarphone")
+        Image(systemName: connected ? "bird.fill" : "bird")
             .accessibilityLabel("Myna")
             .onAppear {
                 MessagesWindow.open = { openWindow(id: "messages") }
