@@ -90,6 +90,7 @@ class Calls(private val context: Context, private val send: (JSONObject) -> Unit
 
     @Suppress("DEPRECATION") // setSpeakerphoneOn: Telecom still follows it for cell calls on Samsung; the new API alone may not
     private fun speakerOn() {
+        InCall.active?.let { it.speaker(); return send(JSONObject().put("t", "call.speaker").put("on", true)) }
         audio.availableCommunicationDevices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }?.let { audio.setCommunicationDevice(it) }
         audio.isSpeakerphoneOn = true
         send(JSONObject().put("t", "call.speaker").put("on", audio.communicationDevice?.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER || audio.isSpeakerphoneOn))

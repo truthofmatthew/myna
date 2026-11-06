@@ -72,3 +72,7 @@ Apply on Phone worked: Myna took the SMS role and applied the batch. But Samsung
 Retried with `IOBluetoothHandsFreeDevice.connectSCO()` (not just `transferAudioToComputer`) during an active call to 162: refused again with `kIOReturnUnsupported` (0xE00002C7). No Bluetooth audio device appears on the Mac, and the phone falls back to its earpiece 0.6 s after trying the Mac. Settled: macOS 27 doesn't carry call audio for third-party apps. Calls stay control-only; when the Mac answers or dials, the phone switches to its loudspeaker (menu toggle "Speakerphone for Calls from Mac").
 
 Calling from the Messages window works (confirmed by hand).
+
+## Speakerphone for calls from the Mac (November 6, 2026)
+
+`AudioManager.setCommunicationDevice` and `setSpeakerphoneOn` during a cell call were ignored on Android 17: Telecom kept the earpiece. Only a service in the call may change a cell call's route. This phone has no CALL_COMPANION role, but a non-UI `InCallService` is bound for apps holding `MANAGE_ONGOING_CALLS` (the permission watch apps get). Granting it with `adb shell appops set com.truthofmatthew.myna MANAGE_ONGOING_CALLS allow` works: Telecom bound Myna's `InCall` service during a test call. Myna now uses `setAudioRoute(ROUTE_SPEAKER)` from that service.
