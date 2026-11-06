@@ -37,3 +37,11 @@ Test phone: Galaxy S24 FE (SM-S721B, Exynos 2400e), Android 17 (API 37), One UI 
 - scrcpy 5 stream format: a 4-byte codec id, then 12-byte headers. A header with the top bit set is a session packet (flags, width, height) with no payload. Media packets have bit 62 = config and bit 61 = key frame, and pts in the low 61 bits.
 - **Test page works** (`http://127.0.0.1:8737/`, Chrome 152): `avc1.640020` 1280x720 at about 30 fps, decoded frames equal received packets, and the mic level moves.
 - Not tested yet: Meet itself, including Chrome's local network prompt when meet.google.com fetches from 127.0.0.1.
+
+### Meet test results
+
+- **Meet in Edge works** once meet.google.com is allowed **Local network access** (`edge://settings/content/siteDetails?site=https%3A%2F%2Fmeet.google.com`). Without it, Chromium blocks the page's request to `127.0.0.1` ("Permission was denied for this request to access the `loopback` address space"). Meet's own service worker also handles these requests. The real extension should fetch from its own extension context (host permission for the bridge) instead of from the page.
+- **Devices:** the extension lists Myna Front Camera (default, listed first), Myna Back Camera and Myna Mic. Video and mic are separate streams (`/video?camera=front|back`, `/audio`), so switching cameras keeps the mic running. Stopping the last track for a camera closes its phone stream and frees the camera.
+- **Rotation:** front camera sensor 270°, back 90°. For landscape with the top on the right, both need a 180° turn (`capture_orientation=180`, the bridge default, `MYNA_ORIENTATION` overrides it). The Android app should follow the phone's rotation instead.
+- **Wireless:** works with adb over Wi-Fi: `adb tcpip 5555` while on USB, then `adb connect <phone-ip>:5555`, approve the prompt on the phone, and start the bridge with `ANDROID_SERIAL=<phone-ip>:5555`. In 5 s it moved 576 KB of video and 411 KB of mic audio in 3 s (raw stereo PCM is about 190 KB/s). Lasts until the phone restarts. Raw PCM should become Opus once the Android app replaces this stand-in.
+- USB approval got stuck on "unauthorized" for a while after `adb tcpip`; it cleared after a replug and Allow.
