@@ -1,3 +1,4 @@
+import ServiceManagement
 import SwiftUI
 
 @main
@@ -35,6 +36,9 @@ private struct MenuContent: View {
             openWindow(id: "pair")
             NSApp.activate()
         }
+        Toggle("Open at Login", isOn: Binding(
+            get: { SMAppService.mainApp.status == .enabled },
+            set: { on in try? on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister() }))
         Divider()
         Button("Quit Myna") { NSApp.terminate(nil) }.keyboardShortcut("q")
     }

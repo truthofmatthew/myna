@@ -179,7 +179,7 @@ final class Hub: ObservableObject {
     private func addAudioViewer(_ connection: NWConnection) {
         guard let phone else { return reply(connection, "503 Service Unavailable", body: "Phone not connected", end: true) }
         reply(connection, "200 OK", end: false)
-        connection.send(content: Data("pcm1".utf8), completion: .idempotent)
+        connection.send(content: Data("opus".utf8), completion: .idempotent)
         let viewer = Viewer(connection)
         if audioViewers.isEmpty { phone.send(message: ["t": "mic", "on": true]) }
         audioViewers.append(viewer)

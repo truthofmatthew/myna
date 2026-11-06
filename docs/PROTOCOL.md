@@ -46,7 +46,7 @@ Plaintext starts with a type byte:
 |---|---|---|
 | 1 | message | UTF-8 JSON |
 | 2 | video | `[flags u8][pts µs u64][H.264 Annex B]`: flags bit 0 = key frame, bit 1 = config (SPS/PPS) |
-| 3 | audio | `[flags u8][pts µs u64][PCM s16le, 48 kHz, mono]` |
+| 3 | audio | `[flags u8][pts µs u64][one Opus packet, 48 kHz mono, 20 ms]` |
 
 ## Messages
 
@@ -69,7 +69,7 @@ The Mac app serves the streams on `http://127.0.0.1:8737` for the Chrome extensi
 - `GET /video?camera=front|back`
 - `GET /audio`
 
-Each response streams a 4-byte codec id (`h264` or `pcm1`), then 12-byte packet headers, the same framing scrcpy 5 uses:
+Each response streams a 4-byte codec id (`h264` or `opus`), then 12-byte packet headers, the same framing scrcpy 5 uses:
 
 - Header with the top bit set: session packet with no payload. Its first u32 is `0x80000000 | rotation` (rotation in degrees: 0, 90, 180, 270), followed by width u32 and height u32 of the frames as sent, before turning.
 - Otherwise `[pts u64][size u32]` then the payload. Bit 62 of the pts field = config, bit 61 = key frame.

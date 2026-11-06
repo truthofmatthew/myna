@@ -24,7 +24,7 @@
     const stats = window.mynaStats[id] = { packets: 0, decoded: 0, codec: '', error: '' };
     const s = { gen, users: 0, ended: false, close: () => abort.abort() };
 
-    let onPacket, rotation = 0, channels = 2;
+    let onPacket, rotation = 0, codec = '';
     if (isVideo) {
       let config = null;
       const decoder = new VideoDecoder({
@@ -48,9 +48,20 @@
         decoder.decode(new EncodedVideoChunk({ type: isKey ? 'key' : 'delta', timestamp: pts, data }));
       };
     } else {
+      let decoder;
       onPacket = (isConfig, isKey, pts, data) => {
         if (isConfig) return;
-        // interleaved s16le, 48 kHz: mono from the Myna app ('pcm1'), stereo from scrcpy ('raw')
+        if (codec === 'opus') { // Myna app: 20 ms Opus packets, 48 kHz mono
+          decoder ??= new AudioDecoder({
+            output: (a) => { stats.decoded++; out.write(a).catch(() => a.close()); },
+            error: (e) => { stats.error = e.message; console.warn('[myna] audio decode', e); },
+          });
+          if (decoder.state === 'unconfigured') decoder.configure({ codec: 'opus', sampleRate: 48000, numberOfChannels: 1 });
+          decoder.decode(new EncodedAudioChunk({ type: 'key', timestamp: pts, data }));
+          return;
+        }
+        // Interleaved s16le, 48 kHz: mono for 'pcm1', stereo from scrcpy ('raw').
+        const channels = codec === 'pcm1' ? 1 : 2;
         out.write(new AudioData({ format: 's16', sampleRate: 48000, numberOfChannels: channels,
           numberOfFrames: data.byteLength / (2 * channels), timestamp: pts, data })).catch(() => {});
       };
@@ -58,9 +69,7 @@
 
     (async () => {
       try {
-        const res = await fetch(BRIDGE + device.path, { cache: 'no-store', signal: abort.signal });
-        if (!res.ok) throw new Error(`bridge answered ${res.status}`);
-        const reader = res.body.getReader();
+        const reader = openBridge(device.path, abort.signal);
         let buf = new Uint8Array(0), header = 4;
         for (;;) {
           const { value, done } = await reader.read();
@@ -68,7 +77,8 @@
           buf = concat(buf, value);
           if (header) {
             if (buf.length < header) continue;
-            if (String.fromCharCode(...buf.subarray(0, 4)) === 'pcm1') channels = 1;
+            codec = String.fromCharCode(...buf.subarray(0, 4));
+            stats.codec ||= codec;
             buf = buf.subarray(header); header = 0;
           }
           while (buf.length >= 12) {
@@ -91,6 +101,36 @@
       if (streams[id] === s) delete streams[id];
     })();
     return s;
+  }
+
+  // On Meet the bytes come through the extension's relay frame (host.js, relay.js), which fetches
+  // with the extension's own permission. The local test page has no extension, so it fetches directly.
+  function openBridge(path, signal) {
+    if (location.origin === 'http://127.0.0.1:8740' || location.origin === BRIDGE) {
+      const reader = fetch(BRIDGE + path, { cache: 'no-store', signal }).then((res) => {
+        if (!res.ok) throw new Error(`Myna on the Mac answered ${res.status}`);
+        return res.body.getReader();
+      });
+      return { read: () => reader.then((r) => r.read()) };
+    }
+    const { port1, port2 } = new MessageChannel();
+    const queue = [];
+    let ended = false, failure = null, wake = null;
+    port1.onmessage = ({ data }) => {
+      if (data.chunk) queue.push(new Uint8Array(data.chunk));
+      if (data.end) { ended = true; failure = data.error ? new Error(data.error) : null; }
+      wake?.();
+    };
+    signal.addEventListener('abort', () => { port1.postMessage({ stop: true }); port1.close(); ended = true; wake?.(); });
+    window.postMessage({ myna: 'open', path }, location.origin, [port2]);
+    return {
+      async read() {
+        while (!queue.length && !ended) await new Promise((r) => (wake = r));
+        if (queue.length) return { value: queue.shift(), done: false };
+        if (failure) throw failure;
+        return { done: true };
+      },
+    };
   }
 
   // The phone sends frames as the sensor sees them; turn them upright here.
@@ -175,7 +215,7 @@
   proto.getSettings = function () {
     const id = ours.get(this), s = realSettings.call(this);
     if (!id) return s;
-    const extra = DEVICES[id].kind === 'videoinput' ? { width: 1280, height: 720, frameRate: 30 } : { sampleRate: 48000, channelCount: 2 };
+    const extra = DEVICES[id].kind === 'videoinput' ? { width: 1280, height: 720, frameRate: 30 } : { sampleRate: 48000, channelCount: 1 };
     return { ...s, deviceId: id, groupId: GROUP, ...extra };
   };
   Object.defineProperty(proto, 'label', { get() { return DEVICES[ours.get(this)]?.label ?? realLabel.call(this); } });

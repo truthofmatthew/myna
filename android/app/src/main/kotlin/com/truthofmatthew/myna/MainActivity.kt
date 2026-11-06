@@ -40,6 +40,8 @@ class MainActivity : Activity() {
             addView(title); addView(status); addView(connect); addView(forget)
         })
         handlePairing(intent)
+        // Opening Myna means you want it connected; no need to tap Connect every time.
+        if (intent?.data == null && savedInstanceState == null && Pairing.load(this) != null && LinkService.status == "Stopped") start()
     }
 
     override fun onNewIntent(intent: Intent) {
