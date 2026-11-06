@@ -8,6 +8,8 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Build
@@ -15,7 +17,6 @@ import android.os.IBinder
 import android.util.Log
 import org.json.JSONObject
 import java.net.InetSocketAddress
-import java.net.Socket
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -52,10 +53,15 @@ class LinkService : Service() {
     private fun connectLoop() {
         while (running) {
             val pairing = Pairing.load(this) ?: run { setStatus("Not paired"); stopSelf(); return }
+            // The Mac is only reachable on the local network; never let Android send this over mobile data.
+            val cm = getSystemService(ConnectivityManager::class.java)
+            @Suppress("DEPRECATION") // allNetworks is the simplest way to pick the Wi-Fi network once
+            val wifi = cm.allNetworks.firstOrNull { cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true }
+            if (wifi == null) { setStatus("Turn on Wi-Fi to reach ${pairing.name}"); Thread.sleep(3000); continue }
             try {
                 val address = discover(pairing) ?: InetSocketAddress(pairing.host, pairing.port)
                 setStatus("Connecting to ${pairing.name}")
-                val socket = Socket().apply { connect(address, 5000); soTimeout = 30_000; tcpNoDelay = true }
+                val socket = wifi.socketFactory.createSocket().apply { connect(address, 5000); soTimeout = 30_000; tcpNoDelay = true }
                 Link(socket, pairing.key).use { l ->
                     link = l
                     l.sendMessage(JSONObject().put("t", "hello").put("name", deviceName()).put("app", 1))
