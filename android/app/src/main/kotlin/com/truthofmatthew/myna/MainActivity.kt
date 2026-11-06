@@ -67,12 +67,13 @@ class MainActivity : Activity() {
     }
 
     private fun start() {
-        val missing = PERMISSIONS.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+        val missing = (REQUIRED + OPTIONAL).filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
         if (missing.isEmpty()) LinkService.start(this) else requestPermissions(missing.toTypedArray(), 1)
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, results: IntArray) {
-        if (results.all { it == PackageManager.PERMISSION_GRANTED }) LinkService.start(this)
+        // Texts are optional: without SMS access the camera and mic still work.
+        if (REQUIRED.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }) LinkService.start(this)
         else status.text = "Myna needs the camera, microphone and local network to work as your Mac's webcam."
     }
 
@@ -94,11 +95,16 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        private val PERMISSIONS = listOf(
+        private val REQUIRED = listOf(
             Manifest.permission.CAMERA,
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.POST_NOTIFICATIONS,
             "android.permission.ACCESS_LOCAL_NETWORK",
+        )
+        private val OPTIONAL = listOf(
+            Manifest.permission.READ_SMS,
+            Manifest.permission.SEND_SMS,
+            Manifest.permission.READ_CONTACTS,
         )
     }
 }

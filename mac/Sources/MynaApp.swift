@@ -5,7 +5,10 @@ import SwiftUI
 struct MynaApp: App {
     @StateObject private var hub = Hub.shared
 
-    init() { Hub.shared.start() }
+    init() {
+        Texts.shared.setUp()
+        Hub.shared.start()
+    }
 
     var body: some Scene {
         MenuBarExtra("Myna", systemImage: hub.phoneName == nil ? "candybarphone" : "candybarphone.fill") {
@@ -32,6 +35,8 @@ private struct MenuContent: View {
         }
         if let problem = hub.problem { Text(problem) }
         Divider()
+        Button("Messages…") { MessagesWindow.show() }
+            .keyboardShortcut("m")
         Button("Pair Phone…") {
             openWindow(id: "pair")
             NSApp.activate()

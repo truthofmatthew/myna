@@ -66,8 +66,10 @@ final class Hub: ObservableObject {
             // A reconnecting phone picks up whatever the browser is already using.
             if !self.videoViewers.isEmpty { link.send(message: ["t": "camera", "on": true, "camera": self.camera]) }
             if !self.audioViewers.isEmpty { link.send(message: ["t": "mic", "on": true]) }
+            link.send(message: ["t": "sms.sync"])
         }
         link.onMessage = { [weak self] m in
+            if let t = m["t"] as? String, t.hasPrefix("sms.") { return DispatchQueue.main.async { Texts.shared.receive(m) } }
             guard let self, m["t"] as? String == "video",
                   let w = m["w"] as? Int, let h = m["h"] as? Int, let rotation = m["rotation"] as? Int else { return }
             let packet = Self.header(UInt64(0x8000_0000 | UInt32(rotation)) << 32 | UInt64(w), size: UInt32(h))
@@ -208,6 +210,13 @@ final class Hub: ObservableObject {
             }
         }
         drain()
+    }
+
+    /// Sends a message to the phone; false if no phone is connected. Call from the main thread.
+    func sendToPhone(_ message: [String: Any]) -> Bool {
+        guard phoneName != nil else { return false }
+        queue.async { self.phone?.send(message: message) }
+        return true
     }
 
     // MARK: UI state

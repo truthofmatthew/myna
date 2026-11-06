@@ -62,6 +62,23 @@ Mac → phone:
 - `{"t":"mic","on":true}` / `{"t":"mic","on":false}`.
 - `{"t":"ping"}`: every 10 s. The phone answers `{"t":"pong"}`. Either side drops the connection after 30 s of silence.
 
+## Text messages
+
+A message object: `{"id":55743,"thread":12,"address":"+989121234567","name":"Sara","body":"…","date":1793968465081,"type":1,"read":true}`.
+`type` is Android's: 1 received, 2 sent, 4 sending, 5 failed, 6 queued. `date` is milliseconds since 1970. `name` is the contact name, or missing.
+
+Mac → phone:
+
+- `{"t":"sms.sync"}`: send the newest 2000 messages. The Mac sends this after every `hello`.
+- `{"t":"sms.send","to":"+989121234567","body":"…","ref":"<uuid>"}`: send a text from the phone's default SMS SIM.
+
+Phone → Mac:
+
+- `{"t":"sms.list","messages":[…]}`: answer to `sms.sync`, newest first.
+- `{"t":"sms.new","messages":[…]}`: messages that appeared since the last list, received or sent (including ones typed on the phone).
+- `{"t":"sms.sent","ref":"<uuid>","ok":true}`: the carrier accepted (or refused) a text the Mac asked to send.
+- `{"t":"sms.error","error":"…"}`: texts aren't available, for example because SMS permission wasn't granted.
+
 ## Mac to Chrome
 
 The Mac app serves the streams on `http://127.0.0.1:8737` for the Chrome extension:

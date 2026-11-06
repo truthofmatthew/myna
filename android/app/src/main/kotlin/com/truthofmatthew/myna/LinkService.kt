@@ -29,13 +29,14 @@ class LinkService : Service() {
     @Volatile private var link: Link? = null
     private var camera: CameraStream? = null
     private var mic: MicStream? = null
+    private var texts: Texts? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) { stopSelf(); return START_NOT_STICKY }
-        startForeground(1, notification("Looking for your Mac"),
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+        startForeground(1, notification("Looking for your Mac"), ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING)
         if (!running) {
             running = true
             Thread(::connectLoop, "myna-link").start()
@@ -65,6 +66,7 @@ class LinkService : Service() {
                 Link(socket, pairing.key).use { l ->
                     link = l
                     l.sendMessage(JSONObject().put("t", "hello").put("name", deviceName()).put("app", 1))
+                    texts = Texts(this) { runCatching { l.sendMessage(it) } }.also { it.start() }
                     setStatus("Connected to ${pairing.name}")
                     while (running) {
                         val (type, body) = l.receive()
@@ -75,6 +77,7 @@ class LinkService : Service() {
                 Log.i(TAG, "connection ended: $e")
             } finally {
                 link = null
+                texts?.stop(); texts = null
                 stopMedia()
             }
             if (running) { setStatus("Waiting for ${Pairing.load(this)?.name ?: "your Mac"}"); Thread.sleep(2000) }
@@ -82,7 +85,9 @@ class LinkService : Service() {
     }
 
     private fun handle(l: Link, message: JSONObject) {
-        when (message.optString("t")) {
+        val t = message.optString("t")
+        if (t.startsWith("sms.")) { texts?.handle(message); return }
+        when (t) {
             "ping" -> l.sendMessage(JSONObject().put("t", "pong"))
             "camera" -> {
                 camera?.stop(); camera = null
