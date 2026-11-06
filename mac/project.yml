@@ -1,0 +1,38 @@
+name: Myna
+options:
+  bundleIdPrefix: com.truthofmatthew
+  developmentLanguage: en
+  deploymentTarget:
+    macOS: "14.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: 3GHX277DW6
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: Apple Development
+targets:
+  Myna:
+    type: application
+    platform: macOS
+    sources: [Sources]
+    info:
+      path: Sources/Info.plist
+      properties:
+        LSUIElement: true
+        CFBundleDisplayName: Myna
+        NSLocalNetworkUsageDescription: Myna finds your phone on your Wi-Fi so its camera, mic, texts and calls reach this Mac.
+        NSBonjourServices: [_myna._tcp]
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSHumanReadableCopyright: ""
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.truthofmatthew.Myna
+        ENABLE_HARDENED_RUNTIME: YES
+schemes:
+  Myna:
+    build:
+      targets:
+        Myna: all

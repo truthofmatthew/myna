@@ -24,11 +24,15 @@
     const stats = window.mynaStats[id] = { packets: 0, decoded: 0, codec: '', error: '' };
     const s = { gen, users: 0, ended: false, close: () => abort.abort() };
 
-    let onPacket;
+    let onPacket, rotation = 0, channels = 2;
     if (isVideo) {
       let config = null;
       const decoder = new VideoDecoder({
-        output: (f) => { stats.decoded++; out.write(f).catch(() => f.close()); },
+        output: (f) => {
+          stats.decoded++;
+          const frame = turn(f, rotation);
+          out.write(frame).catch(() => frame.close());
+        },
         error: (e) => { stats.error = e.message; console.warn('[myna] video decode', e); },
       });
       onPacket = (isConfig, isKey, pts, data) => {
@@ -46,9 +50,9 @@
     } else {
       onPacket = (isConfig, isKey, pts, data) => {
         if (isConfig) return;
-        // raw = interleaved s16le, 48 kHz, stereo
-        out.write(new AudioData({ format: 's16', sampleRate: 48000, numberOfChannels: 2,
-          numberOfFrames: data.byteLength / 4, timestamp: pts, data })).catch(() => {});
+        // interleaved s16le, 48 kHz: mono from the Myna app ('pcm1'), stereo from scrcpy ('raw')
+        out.write(new AudioData({ format: 's16', sampleRate: 48000, numberOfChannels: channels,
+          numberOfFrames: data.byteLength / (2 * channels), timestamp: pts, data })).catch(() => {});
       };
     }
 
@@ -62,11 +66,16 @@
           const { value, done } = await reader.read();
           if (done) break;
           buf = concat(buf, value);
-          if (header) { if (buf.length < header) continue; buf = buf.subarray(header); header = 0; }
+          if (header) {
+            if (buf.length < header) continue;
+            if (String.fromCharCode(...buf.subarray(0, 4)) === 'pcm1') channels = 1;
+            buf = buf.subarray(header); header = 0;
+          }
           while (buf.length >= 12) {
             const v = new DataView(buf.buffer, buf.byteOffset);
             const hi = v.getUint32(0), lo = v.getUint32(4);
-            if (hi >>> 31) { buf = buf.subarray(12); continue; } // session packet (width, height), no payload
+            // Session packet, no payload: rotation in the low bits (Myna app), then width and height.
+            if (hi >>> 31) { rotation = hi & 0x1ff; buf = buf.subarray(12); continue; }
             const size = v.getUint32(8);
             if (buf.length < 12 + size) break;
             stats.packets++;
@@ -82,6 +91,23 @@
       if (streams[id] === s) delete streams[id];
     })();
     return s;
+  }
+
+  // The phone sends frames as the sensor sees them; turn them upright here.
+  let canvas, draw;
+  function turn(frame, degrees) {
+    if (!degrees) return frame;
+    const w = frame.displayWidth, h = frame.displayHeight, sideways = degrees % 180 !== 0;
+    canvas ??= new OffscreenCanvas(1, 1);
+    const cw = sideways ? h : w, ch = sideways ? w : h;
+    if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
+    draw ??= canvas.getContext('2d');
+    draw.setTransform(1, 0, 0, 1, cw / 2, ch / 2);
+    draw.rotate(degrees * Math.PI / 180);
+    draw.drawImage(frame, -w / 2, -h / 2);
+    const turned = new VideoFrame(canvas, { timestamp: frame.timestamp });
+    frame.close();
+    return turned;
   }
 
   function findNal(annexB, type) {
