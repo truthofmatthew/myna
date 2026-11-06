@@ -1,0 +1,7 @@
+build/
+*.xcodeproj/
+.DS_Store
+.gradle/
+local.properties
+android/**/build/
+*.apk
