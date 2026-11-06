@@ -62,7 +62,6 @@ struct MessagesView: View {
                     ContentUnavailableView("Pick a conversation", systemImage: "message")
                 }
             }
-            .toolbarBackground(.visible, for: .windowToolbar)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) { StatusBars(texts: texts) }
         .sheet(isPresented: $showBlocked) { BlockedView(texts: texts) }

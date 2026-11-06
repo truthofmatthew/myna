@@ -11,13 +11,30 @@ struct MynaApp: App {
     }
 
     var body: some Scene {
-        MenuBarExtra("Myna", systemImage: hub.phoneName == nil ? "candybarphone" : "candybarphone.fill") {
+        MenuBarExtra {
             MenuContent(hub: hub)
+        } label: {
+            MenuIcon(connected: hub.phoneName != nil)
         }
+        Window("Messages", id: "messages") {
+            MessagesView(texts: .shared)
+        }
+        .defaultSize(width: 860, height: 600)
         Window("Pair Phone", id: "pair") {
             PairView()
         }
         .windowResizability(.contentSize)
+    }
+}
+
+private struct MenuIcon: View {
+    let connected: Bool
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Image(systemName: connected ? "candybarphone.fill" : "candybarphone")
+            .accessibilityLabel("Myna")
+            .onAppear { MessagesWindow.open = { openWindow(id: "messages") } }
     }
 }
 

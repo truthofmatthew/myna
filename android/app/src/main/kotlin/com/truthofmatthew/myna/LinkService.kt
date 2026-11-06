@@ -17,6 +17,7 @@ import android.os.IBinder
 import android.util.Log
 import org.json.JSONObject
 import java.net.InetSocketAddress
+import java.net.Socket
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -57,12 +58,20 @@ class LinkService : Service() {
             // The Mac is only reachable on the local network; never let Android send this over mobile data.
             val cm = getSystemService(ConnectivityManager::class.java)
             @Suppress("DEPRECATION") // allNetworks is the simplest way to pick the Wi-Fi network once
-            val wifi = cm.allNetworks.firstOrNull { cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true }
+            // Samsung keeps extra, restricted Wi-Fi networks (Quick Share and the like); binding to one fails with EPERM.
+            val wifi = cm.allNetworks.firstOrNull {
+                cm.getNetworkCapabilities(it)?.run {
+                    hasTransport(NetworkCapabilities.TRANSPORT_WIFI) && hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
+                } == true
+            }
             if (wifi == null) { setStatus("Turn on Wi-Fi to reach ${pairing.name}"); Thread.sleep(3000); continue }
             try {
                 val address = discover(pairing) ?: InetSocketAddress(pairing.host, pairing.port)
                 setStatus("Connecting to ${pairing.name}")
-                val socket = wifi.socketFactory.createSocket().apply { connect(address, 5000); soTimeout = 30_000; tcpNoDelay = true }
+                val socket = Socket()
+                // Android sometimes refuses the pin with EPERM for a while (seen after a reinstall); the default route still reaches the Mac then.
+                runCatching { wifi.bindSocket(socket) }.onFailure { Log.i(TAG, "not pinned to Wi-Fi: $it") }
+                socket.apply { connect(address, 5000); soTimeout = 30_000; tcpNoDelay = true }
                 Link(socket, pairing.key).use { l ->
                     link = l
                     active = l

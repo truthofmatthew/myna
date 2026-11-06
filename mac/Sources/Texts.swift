@@ -270,25 +270,14 @@ final class Texts: NSObject, ObservableObject, UNUserNotificationCenterDelegate 
     }
 }
 
-/// The Messages window, made with AppKit so a notification can open it too.
+/// Opens the SwiftUI Messages window from outside a view (notifications). An AppKit-made window
+/// let the list scroll under the see-through toolbar with no blur, so the window comes from a Window scene.
 enum MessagesWindow {
-    private static var window: NSWindow?
+    /// Set by the menu bar icon, which is always on screen and can reach SwiftUI's openWindow.
+    static var open: (() -> Void)?
 
     static func show() {
-        if window == nil {
-            let w = NSWindow(contentViewController: NSHostingController(rootView: MessagesView(texts: .shared)))
-            w.title = "Messages"
-            w.toolbarStyle = .unified
-            // Content starts below the toolbar; under it, an AppKit-made window gets no blur and text shows through.
-            w.styleMask.remove(.fullSizeContentView)
-            w.titlebarAppearsTransparent = false
-            w.setContentSize(NSSize(width: 860, height: 600))
-            w.setFrameAutosaveName("Messages")
-            w.isReleasedWhenClosed = false
-            w.center()
-            window = w
-        }
-        window?.makeKeyAndOrderFront(nil)
+        open?()
         NSApp.activate()
     }
 }
