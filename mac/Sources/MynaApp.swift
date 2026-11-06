@@ -3,6 +3,7 @@ import SwiftUI
 
 @main
 struct MynaApp: App {
+    @NSApplicationDelegateAdaptor private var delegate: AppDelegate
     @StateObject private var hub = Hub.shared
 
     init() {
@@ -30,6 +31,15 @@ struct MynaApp: App {
             PairView()
         }
         .windowResizability(.contentSize)
+    }
+}
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// The menu bar can hide Myna's icon (behind the notch, or when it's full), so opening
+    /// Myna again from Spotlight or Finder brings up Messages instead of doing nothing.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        if !hasVisibleWindows { MessagesWindow.show() }
+        return true
     }
 }
 
