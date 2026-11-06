@@ -45,3 +45,12 @@ Test phone: Galaxy S24 FE (SM-S721B, Exynos 2400e), Android 17 (API 37), One UI 
 - **Rotation:** front camera sensor 270°, back 90°. For landscape with the top on the right, both need a 180° turn (`capture_orientation=180`, the bridge default, `MYNA_ORIENTATION` overrides it). The Android app should follow the phone's rotation instead.
 - **Wireless:** confirmed in Meet with the cable unplugged. Works with adb over Wi-Fi: `adb tcpip 5555` while on USB, then `adb connect <phone-ip>:5555`, approve the prompt on the phone, and start the bridge with `ANDROID_SERIAL=<phone-ip>:5555`. In 5 s it moved 576 KB of video and 411 KB of mic audio in 3 s (raw stereo PCM is about 190 KB/s). Lasts until the phone restarts. Raw PCM should become Opus once the Android app replaces this stand-in.
 - USB approval got stuck on "unauthorized" for a while after `adb tcpip`; it cleared after a replug and Allow.
+
+## Phase 1 result (November 6, 2026)
+
+The Myna Android app and Mac app replace scrcpy and the Node bridge. Paired by QR, connected over Wi-Fi with protocol v1, and **Meet in Edge shows the phone's camera and mic**.
+
+Bugs found on the way:
+- The phone's Wi-Fi was off, so connections went out over mobile data. The app now binds its socket to the Wi-Fi network and says "Turn on Wi-Fi" when there's none.
+- The Mac app freed new connections before the handshake (nothing retained the `PhoneLink`), so the phone hung on "Connecting".
+- Network.framework connections don't show in `lsof`; check from the phone's side or pull a stream from 127.0.0.1:8737 instead.
