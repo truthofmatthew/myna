@@ -19,7 +19,7 @@
     const devices = await navigator.mediaDevices.enumerateDevices();
     document.getElementById('devices').textContent = devices.map((d) => `${d.kind}: ${d.label || d.deviceId}`).join('\n');
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { deviceId: { exact: 'myna-camera' } }, audio: { deviceId: { exact: 'myna-mic' } } });
+      video: { deviceId: { exact: 'myna-camera-front' } }, audio: { deviceId: { exact: 'myna-mic' } } });
     const v = document.getElementById('v');
     v.srcObject = stream;
     const [vt] = stream.getVideoTracks(), [at] = stream.getAudioTracks();

@@ -1,101 +1,85 @@
-// Adds "Myna Camera" and "Myna Mic" to the page's device list and serves them from the phone stream.
+// Adds the phone's cameras and mic to the page's device list and serves them from the Myna bridge.
 // Runs in the page's own world so Meet sees the patched navigator.mediaDevices.
 (() => {
-  const AV_URL = 'http://127.0.0.1:8737/av';
-  const CAM = 'myna-camera', MIC = 'myna-mic', GROUP = 'myna-phone';
-  const labels = { [CAM]: 'Myna Camera (phone)', [MIC]: 'Myna Mic (phone)' };
+  const BRIDGE = 'http://127.0.0.1:8737';
+  const GROUP = 'myna-phone';
+  const DEVICES = {
+    'myna-camera-front': { kind: 'videoinput', label: 'Myna Front Camera (phone)', path: '/video?camera=front' },
+    'myna-camera-back': { kind: 'videoinput', label: 'Myna Back Camera (phone)', path: '/video?camera=back' },
+    'myna-mic': { kind: 'audioinput', label: 'Myna Mic (phone)', path: '/audio' },
+  };
   const md = navigator.mediaDevices;
   const realGetUserMedia = md.getUserMedia.bind(md);
   const realEnumerate = md.enumerateDevices.bind(md);
   const ours = new WeakMap(); // track -> deviceId
+  const streams = {}; // deviceId -> open phone stream, shared by every track handed out for it
+  window.mynaStats = {}; // read from the console when debugging
 
-  let session = null; // one phone stream shared by every getUserMedia call
+  // One phone stream: scrcpy 5 framing (4-byte codec id, then 12-byte packet headers) into a track generator.
+  function openStream(id) {
+    const device = DEVICES[id], isVideo = device.kind === 'videoinput';
+    const gen = new MediaStreamTrackGenerator({ kind: isVideo ? 'video' : 'audio' });
+    const out = gen.writable.getWriter();
+    const abort = new AbortController();
+    const stats = window.mynaStats[id] = { packets: 0, decoded: 0, codec: '', error: '' };
+    const s = { gen, users: 0, ended: false, close: () => abort.abort() };
 
-  function openSession() {
-    const video = new MediaStreamTrackGenerator({ kind: 'video' });
-    const audio = new MediaStreamTrackGenerator({ kind: 'audio' });
-    const videoOut = video.writable.getWriter(), audioOut = audio.writable.getWriter();
-    const s = { video, audio, ended: false, stats: { video: 0, audio: 0, decoded: 0, codec: '', error: '' } };
-    window.mynaStats = s.stats; // read from the console when debugging
-
-    let config = null;
-    const decoder = new VideoDecoder({
-      output: (f) => { s.stats.decoded++; videoOut.write(f).catch(() => f.close()); },
-      error: (e) => { s.stats.error = e.message; console.warn('[myna] video decode', e); },
-    });
-
-    // Each channel carries scrcpy 5's stream: a 4-byte codec id, then 12-byte packet headers.
-    // A header whose top bit is set is a session packet (width, height) with no payload;
-    // otherwise it's [flags + pts u64][size u32] followed by the payload.
-    const channels = [
-      { buf: new Uint8Array(0), header: 4, onPacket: onVideo },
-      { buf: new Uint8Array(0), header: 4, onPacket: onAudio },
-    ];
-
-    function onVideo(flags, pts, data) {
-      s.stats.video++;
-      if (flags & 2) { // config packet: SPS/PPS
-        config = data;
-        const sps = findNal(data, 7);
-        const codec = s.stats.codec = 'avc1.' + [...sps.subarray(1, 4)].map((b) => b.toString(16).padStart(2, '0')).join('');
-        decoder.configure({ codec, optimizeForLatency: true }); // no description = Annex B input
-        return;
-      }
-      if (decoder.state !== 'configured') return;
-      const key = !!(flags & 1);
-      if (key && config) data = concat(config, data);
-      decoder.decode(new EncodedVideoChunk({ type: key ? 'key' : 'delta', timestamp: pts, data }));
-    }
-
-    function onAudio(flags, pts, data) {
-      s.stats.audio++;
-      if (flags & 2) return;
-      // raw = interleaved s16le, 48 kHz, stereo
-      audioOut.write(new AudioData({ format: 's16', sampleRate: 48000, numberOfChannels: 2,
-        numberOfFrames: data.byteLength / 4, timestamp: pts, data })).catch(() => {});
-    }
-
-    function feed(ch, bytes) {
-      ch.buf = concat(ch.buf, bytes);
-      if (ch.header) {
-        if (ch.buf.length < ch.header) return;
-        ch.buf = ch.buf.subarray(ch.header); ch.header = 0;
-      }
-      while (ch.buf.length >= 12) {
-        const v = new DataView(ch.buf.buffer, ch.buf.byteOffset);
-        const hi = v.getUint32(0), lo = v.getUint32(4);
-        if (hi >>> 31) { ch.buf = ch.buf.subarray(12); continue; } // session packet
-        const size = v.getUint32(8);
-        if (ch.buf.length < 12 + size) return;
-        const flags = ((hi >>> 30) & 1) << 1 | ((hi >>> 29) & 1); // bit 62 = config, bit 61 = key frame
-        const pts = (hi & 0x1fffffff) * 2 ** 32 + lo;
-        ch.onPacket(flags, pts, ch.buf.slice(12, 12 + size));
-        ch.buf = ch.buf.subarray(12 + size);
-      }
+    let onPacket;
+    if (isVideo) {
+      let config = null;
+      const decoder = new VideoDecoder({
+        output: (f) => { stats.decoded++; out.write(f).catch(() => f.close()); },
+        error: (e) => { stats.error = e.message; console.warn('[myna] video decode', e); },
+      });
+      onPacket = (isConfig, isKey, pts, data) => {
+        if (isConfig) { // SPS/PPS
+          config = data;
+          const sps = findNal(data, 7);
+          stats.codec = 'avc1.' + [...sps.subarray(1, 4)].map((b) => b.toString(16).padStart(2, '0')).join('');
+          decoder.configure({ codec: stats.codec, optimizeForLatency: true }); // no description = Annex B input
+          return;
+        }
+        if (decoder.state !== 'configured') return;
+        if (isKey && config) data = concat(config, data);
+        decoder.decode(new EncodedVideoChunk({ type: isKey ? 'key' : 'delta', timestamp: pts, data }));
+      };
+    } else {
+      onPacket = (isConfig, isKey, pts, data) => {
+        if (isConfig) return;
+        // raw = interleaved s16le, 48 kHz, stereo
+        out.write(new AudioData({ format: 's16', sampleRate: 48000, numberOfChannels: 2,
+          numberOfFrames: data.byteLength / 4, timestamp: pts, data })).catch(() => {});
+      };
     }
 
     (async () => {
       try {
-        const res = await fetch(AV_URL, { cache: 'no-store' });
+        const res = await fetch(BRIDGE + device.path, { cache: 'no-store', signal: abort.signal });
         if (!res.ok) throw new Error(`bridge answered ${res.status}`);
         const reader = res.body.getReader();
-        let pending = new Uint8Array(0);
+        let buf = new Uint8Array(0), header = 4;
         for (;;) {
           const { value, done } = await reader.read();
           if (done) break;
-          pending = concat(pending, value);
-          while (pending.length >= 5) {
-            const len = new DataView(pending.buffer, pending.byteOffset).getUint32(1);
-            if (pending.length < 5 + len) break;
-            feed(channels[pending[0]], pending.subarray(5, 5 + len));
-            pending = pending.subarray(5 + len);
+          buf = concat(buf, value);
+          if (header) { if (buf.length < header) continue; buf = buf.subarray(header); header = 0; }
+          while (buf.length >= 12) {
+            const v = new DataView(buf.buffer, buf.byteOffset);
+            const hi = v.getUint32(0), lo = v.getUint32(4);
+            if (hi >>> 31) { buf = buf.subarray(12); continue; } // session packet (width, height), no payload
+            const size = v.getUint32(8);
+            if (buf.length < 12 + size) break;
+            stats.packets++;
+            // bit 62 = config, bit 61 = key frame, pts in the low 61 bits
+            onPacket(!!(hi & 0x40000000), !!(hi & 0x20000000), (hi & 0x1fffffff) * 2 ** 32 + lo, buf.slice(12, 12 + size));
+            buf = buf.subarray(12 + size);
           }
         }
       } catch (e) {
-        console.warn('[myna] phone stream stopped:', e.message);
+        if (e.name !== 'AbortError') console.warn('[myna] phone stream stopped:', e.message);
       }
-      s.ended = true; video.stop(); audio.stop();
-      if (session === s) session = null;
+      s.ended = true; gen.stop();
+      if (streams[id] === s) delete streams[id];
     })();
     return s;
   }
@@ -112,33 +96,44 @@
     const out = new Uint8Array(a.length + b.length); out.set(a); out.set(b, a.length); return out;
   }
 
-  // Meet passes deviceId as a string, an array, or {exact|ideal: ...}.
-  function wants(c, id) {
-    if (!c || typeof c !== 'object') return false;
-    const d = c.deviceId; if (!d) return false;
+  // Meet passes deviceId as a string, an array, or {exact|ideal: ...}. Returns our id if it asked for one.
+  function requested(c) {
+    if (!c || typeof c !== 'object' || !c.deviceId) return null;
+    const d = c.deviceId;
     const v = typeof d === 'object' && !Array.isArray(d) ? (d.exact ?? d.ideal) : d;
-    return Array.isArray(v) ? v.includes(id) : v === id;
+    return [v].flat().find((x) => x in DEVICES) ?? null;
   }
 
-  function track(kind, id) {
-    if (!session || session.ended) session = openSession();
-    const t = session[kind].clone();
+  // Hand out a clone; the phone stream closes when the last clone is stopped, which frees the camera.
+  function track(id) {
+    let s = streams[id];
+    if (!s || s.ended) s = streams[id] = openStream(id);
+    const t = s.gen.clone();
     ours.set(t, id);
+    s.users++;
+    const stop = t.stop.bind(t);
+    let stopped = false;
+    t.stop = () => {
+      stop();
+      if (stopped) return;
+      stopped = true;
+      if (--s.users === 0) s.close();
+    };
     return t;
   }
 
   md.getUserMedia = async (constraints = {}) => {
-    const cam = wants(constraints.video, CAM), mic = wants(constraints.audio, MIC);
+    const cam = requested(constraints.video), mic = requested(constraints.audio);
     if (!cam && !mic) return realGetUserMedia(constraints);
     const rest = { video: cam ? false : constraints.video || false, audio: mic ? false : constraints.audio || false };
-    const real = rest.video || rest.audio ? await realGetUserMedia(rest) : new MediaStream();
-    if (cam) real.addTrack(track('video', CAM));
-    if (mic) real.addTrack(track('audio', MIC));
-    return real;
+    const stream = rest.video || rest.audio ? await realGetUserMedia(rest) : new MediaStream();
+    if (cam) stream.addTrack(track(cam));
+    if (mic) stream.addTrack(track(mic));
+    return stream;
   };
 
-  function fakeDevice(deviceId, kind) {
-    const label = labels[deviceId];
+  function fakeDevice(deviceId) {
+    const { kind, label } = DEVICES[deviceId];
     return Object.create(MediaDeviceInfo.prototype, {
       deviceId: { value: deviceId, enumerable: true }, kind: { value: kind, enumerable: true },
       label: { value: label, enumerable: true }, groupId: { value: GROUP, enumerable: true },
@@ -146,14 +141,16 @@
     });
   }
 
-  md.enumerateDevices = async () => [...await realEnumerate(), fakeDevice(CAM, 'videoinput'), fakeDevice(MIC, 'audioinput')];
+  md.enumerateDevices = async () => [...await realEnumerate(), ...Object.keys(DEVICES).map(fakeDevice)];
 
   // Meet matches tracks to devices by label and settings.deviceId.
   const proto = MediaStreamTrack.prototype;
   const realSettings = proto.getSettings, realLabel = Object.getOwnPropertyDescriptor(proto, 'label').get;
   proto.getSettings = function () {
     const id = ours.get(this), s = realSettings.call(this);
-    return id ? { ...s, deviceId: id, groupId: GROUP, ...(id === CAM ? { width: 1280, height: 720, frameRate: 30 } : { sampleRate: 48000, channelCount: 2 }) } : s;
+    if (!id) return s;
+    const extra = DEVICES[id].kind === 'videoinput' ? { width: 1280, height: 720, frameRate: 30 } : { sampleRate: 48000, channelCount: 2 };
+    return { ...s, deviceId: id, groupId: GROUP, ...extra };
   };
-  Object.defineProperty(proto, 'label', { get() { return labels[ours.get(this)] ?? realLabel.call(this); } });
+  Object.defineProperty(proto, 'label', { get() { return DEVICES[ours.get(this)]?.label ?? realLabel.call(this); } });
 })();
