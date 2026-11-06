@@ -15,6 +15,7 @@ final class Hub: ObservableObject {
     private var phoneListener: NWListener?
     private var browserListener: NWListener?
     private var phone: PhoneLink?
+    private var handshaking: [PhoneLink] = [] // keeps new connections alive until they say hello or close
 
     private final class Viewer {
         let connection: NWConnection
@@ -58,6 +59,7 @@ final class Hub: ObservableObject {
         let link = PhoneLink(connection: connection, pairingKey: key, queue: queue)
         link.onHello = { [weak self, weak link] name in
             guard let self, let link else { return }
+            self.handshaking.removeAll { $0 === link }
             if self.phone !== link { self.phone?.close() }
             self.phone = link
             self.publish { $0.phoneName = name; $0.problem = nil }
@@ -76,11 +78,14 @@ final class Hub: ObservableObject {
             type == 2 ? self?.video(flags: flags, pts: pts, data: data) : self?.audio(pts: pts, data: data)
         }
         link.onClose = { [weak self, weak link] in
-            guard let self, self.phone === link else { return }
+            guard let self else { return }
+            self.handshaking.removeAll { $0 === link }
+            guard self.phone === link else { return }
             self.phone = nil
             self.config = nil
             self.publish { $0.phoneName = nil }
         }
+        handshaking.append(link)
         link.start()
     }
 
