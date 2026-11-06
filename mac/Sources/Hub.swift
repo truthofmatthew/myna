@@ -66,7 +66,7 @@ final class Hub: ObservableObject {
             // A reconnecting phone picks up whatever the browser is already using.
             if !self.videoViewers.isEmpty { link.send(message: ["t": "camera", "on": true, "camera": self.camera]) }
             if !self.audioViewers.isEmpty { link.send(message: ["t": "mic", "on": true]) }
-            link.send(message: ["t": "sms.sync"])
+            link.send(message: Texts.syncRequest)
         }
         link.onMessage = { [weak self] m in
             if let t = m["t"] as? String, t.hasPrefix("sms.") { return DispatchQueue.main.async { Texts.shared.receive(m) } }
@@ -87,7 +87,10 @@ final class Hub: ObservableObject {
             self.phone = nil
             self.config = nil
             self.publish { $0.phoneName = nil }
-            DispatchQueue.main.async { Calls.shared.receive(["t": "call.state", "state": "idle"]) }
+            DispatchQueue.main.async {
+                Calls.shared.receive(["t": "call.state", "state": "idle"])
+                Texts.shared.receive(["t": "sms.stopped"])
+            }
         }
         handshaking.append(link)
         link.start()

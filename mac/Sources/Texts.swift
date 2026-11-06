@@ -64,6 +64,10 @@ final class Texts: NSObject, ObservableObject, UNUserNotificationCenterDelegate 
     @Published private(set) var pending = PhoneBatch()
     @Published private(set) var waitingForPhone = false
     @Published private(set) var problem: String?
+    /// Texts the phone has sent so far in this sync, and how many it will send. Equal once loading is done.
+    @Published private(set) var loaded = 0
+    @Published private(set) var toLoad = 0
+    var isLoading: Bool { loaded < toLoad }
     /// Conversation ids selected in the list (⌘-click, ⇧-click or ⌘A for several).
     @Published var selection: Set<Int64> = []
     private var all: [Int64: TextMessage] = [:]
@@ -92,11 +96,16 @@ final class Texts: NSObject, ObservableObject, UNUserNotificationCenterDelegate 
     /// Phone → Mac messages whose type starts with "sms.". Main thread.
     func receive(_ m: [String: Any]) {
         switch m["t"] as? String {
-        case "sms.list":
-            all = [:]
-            add(m["messages"])
+        case "sms.list", "sms.more":
+            // Pages of a sync, newest first: no notifications. The list is rebuilt for the first page, so the
+            // newest texts show at once, and for the last; rebuilding 40,000 texts after every page froze the app.
+            let first = m["t"] as? String == "sms.list"
+            let done = m["done"] as? Bool ?? true
+            if first { all = [:]; loaded = 0 }
+            loaded += add(m["messages"], rebuild: first || done).count
+            toLoad = done ? loaded : max(m["total"] as? Int ?? 0, loaded)
             synced = true
-            problem = nil
+            if first { problem = nil }
         case "sms.new":
             let fresh = add(m["messages"])
             if synced { fresh.filter { !$0.mine && !isBlocked($0.address) }.forEach(notify) }
@@ -113,6 +122,8 @@ final class Texts: NSObject, ObservableObject, UNUserNotificationCenterDelegate 
             update { $0 = PhoneBatch() }
             waitingForPhone = false
             rebuild()
+        case "sms.stopped":
+            toLoad = loaded  // the phone went away mid-sync; the next connect starts over
         case "sms.error":
             problem = m["error"] as? String
         default: break
@@ -120,6 +131,13 @@ final class Texts: NSObject, ObservableObject, UNUserNotificationCenterDelegate 
     }
 
     // MARK: Actions
+
+    /// How many of the newest texts to load, set in Settings; 0 loads them all.
+    static let limitKey = "textsToLoad"
+    static var syncRequest: [String: Any] { ["t": "sms.sync", "limit": UserDefaults.standard.integer(forKey: limitKey)] }
+
+    /// Loads the texts again, after the limit changes in Settings.
+    func resync() { _ = Hub.shared.sendToPhone(Self.syncRequest) }
 
     func send(to address: String, body: String) {
         let body = body.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -214,18 +232,26 @@ final class Texts: NSObject, ObservableObject, UNUserNotificationCenterDelegate 
     }
 
     @discardableResult
-    private func add(_ list: Any?) -> [TextMessage] {
+    private func add(_ list: Any?, rebuild: Bool = true) -> [TextMessage] {
         let fresh = (list as? [[String: Any]] ?? []).compactMap(TextMessage.init)
             .filter { !pending.delete.contains($0.id) }
             .map { t in var t = t; if pending.read.contains(t.id) { t.read = true }; return t }
         for t in fresh { all[t.id] = t }
-        rebuild()
+        if rebuild { self.rebuild() }
         return fresh
     }
 
     /// Blocked senders stay out of the list; they're in Blocked Numbers.
     private func rebuild() {
-        conversations = Dictionary(grouping: all.values.filter { !isBlocked($0.address) }, by: \.thread)
+        let blockedKeys = Set(blocked.map(key))
+        var hidden: [String: Bool] = [:]
+        let shown = all.values.filter { t in
+            if let h = hidden[t.address] { return !h }
+            let h = blockedKeys.contains(key(t.address))
+            hidden[t.address] = h
+            return !h
+        }
+        conversations = Dictionary(grouping: shown, by: \.thread)
             .map { Conversation(id: $0.key, messages: $0.value.sorted { ($0.date, $0.id) < ($1.date, $1.id) }) }
             .sorted { $0.last.date > $1.last.date }
     }

@@ -6,8 +6,6 @@ struct AdCheckView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("aiProvider") private var providerName = AIProvider.ollama.rawValue
     @AppStorage("aiModel") private var model = ""
-    @State private var key = ""
-    @State private var models: [String] = []
     @State private var running = false
     @State private var checked = 0
     @State private var total = 0
@@ -21,19 +19,7 @@ struct AdCheckView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Find Ads").font(.title2.weight(.semibold))
             Form {
-                Picker("Check with", selection: $providerName) {
-                    ForEach(AIProvider.allCases) { Text($0.rawValue).tag($0.rawValue) }
-                }
-                if !provider.isLocal {
-                    HStack {
-                        SecureField("API key", text: $key)
-                        if let page = provider.keysPage { Link("Get a key", destination: page) }
-                    }
-                }
-                Picker("Model", selection: $model) {
-                    if models.isEmpty { Text(model.isEmpty ? "None found yet" : model).tag(model) }
-                    ForEach(models, id: \.self) { Text($0).tag($0) }
-                }
+                AIFields(error: $error)
             }
             .formStyle(.grouped)
             .frame(height: provider.isLocal ? 110 : 150)
@@ -77,7 +63,7 @@ struct AdCheckView: View {
 
             HStack {
                 Button(verdicts.isEmpty ? "Check Texts" : "Check Again", action: check)
-                    .disabled(running || model.isEmpty || (!provider.isLocal && key.isEmpty))
+                    .disabled(running || model.isEmpty)
                 Spacer()
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("Block \(chosen.count) Sender\(chosen.count == 1 ? "" : "s")") {
@@ -90,18 +76,69 @@ struct AdCheckView: View {
         }
         .padding(20)
         .frame(width: 560)
+        .task {
+            if Demo.on { verdicts = Demo.adVerdicts(); chosen = ["MegaMart", "+15550177"] }
+        }
+    }
+
+    private func check() {
+        let senders = texts.adCandidates()
+        guard !senders.isEmpty else { error = "No senders to check: everyone who texts you is either blocked or someone you've replied to."; return }
+        running = true
+        error = nil
+        checked = 0
+        total = senders.count
+        Task {
+            do {
+                let result = try await AdCheck.run(senders, client: AIClient(provider: provider, model: model)) { n in
+                    Task { @MainActor in checked = n }
+                }
+                verdicts = result.sorted { ($0.isAd ? $0.confidence : -1 + $0.confidence) > ($1.isAd ? $1.confidence : -1 + $1.confidence) }
+                chosen = Set(verdicts.filter { $0.isAd && $0.confidence >= 0.8 }.map(\.address))
+            } catch {
+                self.error = error.localizedDescription
+            }
+            running = false
+        }
+    }
+}
+
+/// Provider, API key and model for Find Ads, shared by the Find Ads sheet and Settings. The key is saved to the
+/// Keychain and the model list loaded once typing stops; Check Texts needs a model from that list.
+struct AIFields: View {
+    @Binding var error: String?
+    @AppStorage("aiProvider") private var providerName = AIProvider.ollama.rawValue
+    @AppStorage("aiModel") private var model = ""
+    @State private var key = ""
+    @State private var models: [String] = []
+
+    private var provider: AIProvider { AIProvider(rawValue: providerName) ?? .ollama }
+
+    var body: some View {
+        Picker("Check with", selection: $providerName) {
+            ForEach(AIProvider.allCases) { Text($0.rawValue).tag($0.rawValue) }
+        }
         .task(id: providerName) {
-            if Demo.on { providerName = AIProvider.ollama.rawValue; models = ["llama3.2"]; model = "llama3.2"; verdicts = Demo.adVerdicts(); chosen = ["MegaMart", "+15550177"]; return }
+            if Demo.on { providerName = AIProvider.ollama.rawValue; models = ["llama3.2"]; model = "llama3.2"; return }
             key = provider.key
             await loadModels()
         }
-        // A new key is saved and tried once typing stops; Check Texts needs the model list it brings.
-        .task(id: key) {
-            guard !provider.isLocal, key != provider.key else { return }
-            try? await Task.sleep(for: .milliseconds(600))
-            guard !Task.isCancelled else { return }
-            provider.key = key
-            await loadModels()
+        if !provider.isLocal {
+            HStack {
+                SecureField("API key", text: $key)
+                if let page = provider.keysPage { Link("Get a key", destination: page) }
+            }
+            .task(id: key) {
+                guard key != provider.key else { return }
+                try? await Task.sleep(for: .milliseconds(600))
+                guard !Task.isCancelled else { return }
+                provider.key = key
+                await loadModels()
+            }
+        }
+        Picker("Model", selection: $model) {
+            if models.isEmpty { Text(model.isEmpty ? "None found yet" : model).tag(model) }
+            ForEach(models, id: \.self) { Text($0).tag($0) }
         }
     }
 
@@ -113,29 +150,6 @@ struct AdCheckView: View {
             if !models.contains(model) { model = AIClient.suggested(models, for: provider) ?? "" }
         } catch {
             if provider.isLocal || !key.isEmpty { self.error = error.localizedDescription }
-        }
-    }
-
-    private func check() {
-        if !provider.isLocal { provider.key = key }
-        let senders = texts.adCandidates()
-        guard !senders.isEmpty else { error = "No senders to check: everyone who texts you is either blocked or someone you've replied to."; return }
-        running = true
-        error = nil
-        checked = 0
-        total = senders.count
-        Task {
-            do {
-                if models.isEmpty { await loadModels() }
-                let result = try await AdCheck.run(senders, client: AIClient(provider: provider, model: model)) { n in
-                    Task { @MainActor in checked = n }
-                }
-                verdicts = result.sorted { ($0.isAd ? $0.confidence : -1 + $0.confidence) > ($1.isAd ? $1.confidence : -1 + $1.confidence) }
-                chosen = Set(verdicts.filter { $0.isAd && $0.confidence >= 0.8 }.map(\.address))
-            } catch {
-                self.error = error.localizedDescription
-            }
-            running = false
         }
     }
 }

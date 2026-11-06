@@ -125,6 +125,19 @@ private struct StatusBars: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if texts.isLoading {
+                Divider()
+                HStack(spacing: 12) {
+                    Text("Loading texts from your phone: \(texts.loaded.formatted()) of \(texts.toLoad.formatted())")
+                        .monospacedDigit()
+                    Spacer()
+                    ProgressView(value: Double(texts.loaded), total: Double(texts.toLoad))
+                        .frame(width: 180)
+                }
+                .font(.callout)
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(.bar)
+            }
             if !texts.pending.isEmpty {
                 Divider()
                 HStack {

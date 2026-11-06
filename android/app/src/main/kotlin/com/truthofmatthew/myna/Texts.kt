@@ -58,7 +58,7 @@ class Texts(private val context: Context, private val send: (JSONObject) -> Unit
     fun handle(message: JSONObject) = handler.post {
         if (!allowed) return@post send(JSONObject().put("t", "sms.error").put("error", "Allow Myna to read and send SMS on the phone."))
         when (message.optString("t")) {
-            "sms.sync" -> send(JSONObject().put("t", "sms.list").put("messages", JSONArray(query("1=1", emptyArray(), SYNC_LIMIT))))
+            "sms.sync" -> sync(message.optInt("limit"))
             "sms.send" -> sendText(message.optString("to"), message.optString("body"), message.optString("ref"))
             "sms.read" -> {
                 // Prefer Samsung's own "Mark as read" button; otherwise the Mac adds it to a batch.
@@ -92,27 +92,58 @@ class Texts(private val context: Context, private val send: (JSONObject) -> Unit
         sms.sendMultipartTextMessage(to, null, parts, sent, null)
     }
 
+    /**
+     * The newest [limit] texts (0 for all of them), newest first, in pages: the first replaces the Mac's list so it
+     * fills fast, the rest add to it. Each page carries the total for the Mac's progress bar; the last says done.
+     */
+    private fun sync(limit: Int) {
+        var page = ArrayList<JSONObject>()
+        var sent = 0
+        var total = 0
+        fun flush(done: Boolean) {
+            send(JSONObject().put("t", if (sent == 0) "sms.list" else "sms.more").put("messages", JSONArray(page))
+                .put("total", total).put("done", done))
+            sent += page.size
+            page = ArrayList()
+        }
+        walk("1=1", emptyArray(), { total = if (limit > 0) minOf(limit, it) else it }) {
+            page += it
+            val last = sent + page.size == total
+            if (page.size == PAGE || last) flush(last)
+            !last
+        }
+        if (sent == 0 || page.isNotEmpty()) flush(true)
+    }
+
     /** Newest first. */
     private fun query(selection: String, args: Array<String>, limit: Int): List<JSONObject> {
         val out = ArrayList<JSONObject>()
+        walk(selection, args) { out += it; out.size < limit }
+        return out
+    }
+
+    /** Tells [count] how many rows matched, then hands each text to [each], newest first, until it returns false. */
+    private fun walk(selection: String, args: Array<String>, count: (Int) -> Unit = {}, each: (JSONObject) -> Boolean) {
         val columns = arrayOf("_id", "thread_id", "address", "body", "date", "type", "read")
         resolver.query(Telephony.Sms.CONTENT_URI, columns, selection, args, "date DESC")?.use { c ->
-            while (c.moveToNext() && out.size < limit) {
+            count(c.count)
+            while (c.moveToNext()) {
                 val address = c.getString(2) ?: continue
-                out += JSONObject()
+                val text = JSONObject()
                     .put("id", c.getLong(0)).put("thread", c.getLong(1)).put("address", address)
                     .put("body", c.getString(3) ?: "").put("date", c.getLong(4)).put("type", c.getInt(5))
                     .put("read", c.getInt(6) == 1)
                     .apply { name(address)?.let { put("name", it) } }
+                if (!each(text)) break
             }
         }
-        return out
     }
 
     private fun name(address: String): String? = names.getOrPut(address) { contactName(context, address) }
 
     companion object {
         private const val ACTION_SENT = "com.truthofmatthew.myna.SMS_SENT"
-        private const val SYNC_LIMIT = 2000
+        // About 1 MB of JSON at most, well under the 4 MB frame limit.
+        private const val PAGE = 1000
     }
 }

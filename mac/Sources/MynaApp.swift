@@ -27,6 +27,10 @@ struct MynaApp: App {
         }
         .windowResizability(.contentSize)
         .windowStyle(.hiddenTitleBar)
+        Window("Myna Settings", id: "settings") {
+            SettingsView()
+        }
+        .windowResizability(.contentSize)
         Window("Pair Phone", id: "pair") {
             PairView()
         }
@@ -64,11 +68,13 @@ private struct MenuIcon: View {
 private struct MenuContent: View {
     @ObservedObject var hub: Hub
     @ObservedObject var calls = Calls.shared
+    @ObservedObject var texts = Texts.shared
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         if let name = hub.phoneName {
             Text("Connected to \(name)")
+            if texts.isLoading { Text("Loading texts: \(texts.loaded * 100 / max(texts.toLoad, 1))%") }
             if hub.cameraInUse { Text("Camera in use") }
             if hub.micInUse { Text("Mic in use") }
         } else {
@@ -99,6 +105,11 @@ private struct MenuContent: View {
         Toggle("Open at Login", isOn: Binding(
             get: { SMAppService.mainApp.status == .enabled },
             set: { on in try? on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister() }))
+        Button("Settings…") {
+            openWindow(id: "settings")
+            NSApp.activate()
+        }
+        .keyboardShortcut(",")
         Divider()
         Button("About Myna") {
             openWindow(id: "about")
