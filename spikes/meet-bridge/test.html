@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Myna test</title>
+<style>
+  body { font: 15px system-ui; margin: 16px; background: #111; color: #eee; }
+  video { width: 100%; max-width: 640px; background: #000; display: block; }
+  meter { width: 100%; max-width: 640px; }
+</style>
+<h1>Myna test</h1>
+<p id="status">Starting…</p>
+<video id="v" autoplay muted playsinline></video>
+<p>Mic level</p>
+<meter id="m" max="1"></meter>
+<pre id="devices"></pre>
+<script src="/myna.js"></script>
+<script>
+  const status = (t) => (document.getElementById('status').textContent = t);
+  (async () => {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    document.getElementById('devices').textContent = devices.map((d) => `${d.kind}: ${d.label || d.deviceId}`).join('\n');
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { deviceId: { exact: 'myna-camera' } }, audio: { deviceId: { exact: 'myna-mic' } } });
+    const v = document.getElementById('v');
+    v.srcObject = stream;
+    const [vt] = stream.getVideoTracks(), [at] = stream.getAudioTracks();
+    status(`Tracks: ${vt.label} / ${at.label}. Waiting for frames…`);
+    const ctx = new AudioContext(), an = ctx.createAnalyser();
+    ctx.createMediaStreamSource(new MediaStream([at])).connect(an);
+    const buf = new Float32Array(an.fftSize);
+    let frames = 0;
+    const tick = () => {
+      an.getFloatTimeDomainData(buf);
+      document.getElementById('m').value = Math.min(1, Math.sqrt(buf.reduce((a, x) => a + x * x, 0) / buf.length) * 8);
+      requestAnimationFrame(tick);
+    };
+    tick();
+    v.requestVideoFrameCallback(function cb() {
+      frames++;
+      status(`${vt.label}: ${v.videoWidth}x${v.videoHeight}, ${frames} frames · ${at.label}`);
+      window.mynaFrames = frames;
+      v.requestVideoFrameCallback(cb);
+    });
+  })().catch((e) => status('Error: ' + e.message));
+</script>

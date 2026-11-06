@@ -26,6 +26,14 @@ Test phone: Galaxy S24 FE (SM-S721B, Exynos 2400e), Android 17 (API 37), One UI 
 - **Audio fails:** the phone tries Bluetooth audio to the Mac, then falls back to the earpiece within 0.6 s. Asking for it with `transferAudioToComputer` returned `kIOReturnUnsupported` (0xE00002C7) for the audio link, and no Bluetooth audio device appeared in macOS. macOS 27 doesn't let a third-party app carry call audio as a hands-free device.
 - **Decision:** calls are control-only. The Mac shows the caller and can dial, answer, reject and hang up; the conversation happens on the phone (or on earbuds connected to the phone). Android can't relay cellular call audio over Wi-Fi either, so there's no other route.
 
-## Camera extension in Meet: not started
+## Camera and mic in Meet: Chrome extension instead of a camera extension
 
-- This Mac only has an `Apple Development` certificate. Activating a system extension needs a paid team with the System Extension capability; shipping it needs a Developer ID and notarization.
+- A system camera extension needs a paid Apple Developer team, and the older camera plug-ins stopped loading in macOS 14. Without a paid account, Myna uses a Chrome extension for Meet instead.
+- `chrome/` is that extension. On meet.google.com it adds "Myna Camera (phone)" and "Myna Mic (phone)" to the device list, and serves them from the phone stream:
+  - video: H.264 decoded with WebCodecs `VideoDecoder`;
+  - audio: raw 48 kHz stereo PCM;
+  - both written into `MediaStreamTrackGenerator` tracks.
+- `spikes/meet-bridge/bridge.mjs` stands in for the Android app: it starts scrcpy's phone-side server over adb and passes the camera and mic to `http://127.0.0.1:8737/av`.
+- scrcpy 5 stream format: a 4-byte codec id, then 12-byte headers. A header with the top bit set is a session packet (flags, width, height) with no payload. Media packets have bit 62 = config and bit 61 = key frame, and pts in the low 61 bits.
+- **Test page works** (`http://127.0.0.1:8737/`, Chrome 152): `avc1.640020` 1280x720 at about 30 fps, decoded frames equal received packets, and the mic level moves.
+- Not tested yet: Meet itself, including Chrome's local network prompt when meet.google.com fetches from 127.0.0.1.
