@@ -14,19 +14,22 @@ struct MessagesView: View {
         return texts.conversations.filter { $0.title.localizedCaseInsensitiveContains(q) || $0.address.contains(q) || $0.last.body.localizedCaseInsensitiveContains(q) }
     }
 
+    private func picked(_ ids: Set<Int64>) -> [Conversation] { texts.conversations.filter { ids.contains($0.id) } }
+
     var body: some View {
         NavigationSplitView {
-            List(selection: $texts.selected) {
+            List(selection: $texts.selection) {
                 ForEach(shown) { c in
-                    ConversationRow(conversation: c)
-                        .tag(c.id)
-                        .contextMenu {
-                            if c.unread > 0 { Button("Mark as Read") { texts.markRead(c) } }
-                            Button("Block \(c.title)") { texts.block([c.address]) }
-                            Divider()
-                            Button("Delete Conversation", role: .destructive) { texts.delete(c.messages.map(\.id)) }
-                        }
+                    ConversationRow(conversation: c).tag(c.id)
                 }
+            }
+            .contextMenu(forSelectionType: Int64.self) { ids in
+                let cs = picked(ids)
+                if !cs.isEmpty {
+                    BulkActions(texts: texts, conversations: cs)
+                    Divider()
+                }
+                Button("Select All") { texts.selection = Set(shown.map(\.id)) }
             }
             .searchable(text: $search, placement: .sidebar, prompt: "Search")
             .navigationSplitViewColumnWidth(min: 240, ideal: 290)
@@ -42,15 +45,18 @@ struct MessagesView: View {
                         .help("Find advertising texts with AI")
                     Button { showBlocked = true } label: { Label("Blocked Numbers", systemImage: "hand.raised") }
                         .help("Blocked numbers")
-                    Button { texts.selected = Self.newMessage } label: { Label("New Message", systemImage: "square.and.pencil") }
+                    Button { texts.selection = [Self.newMessage] } label: { Label("New Message", systemImage: "square.and.pencil") }
                         .help("New message")
                 }
             }
         } detail: {
+            let cs = picked(texts.selection)
             Group {
-                if texts.selected == Self.newMessage {
+                if texts.selection == [Self.newMessage] {
                     ConversationView(texts: texts, conversation: nil)
-                } else if let c = texts.conversations.first(where: { $0.id == texts.selected }) {
+                } else if cs.count > 1 {
+                    BulkView(texts: texts, conversations: cs, all: shown.map(\.id))
+                } else if let c = cs.first {
                     ConversationView(texts: texts, conversation: c).id(c.id)
                 } else {
                     ContentUnavailableView("Pick a conversation", systemImage: "message")
@@ -61,9 +67,53 @@ struct MessagesView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) { StatusBars(texts: texts) }
         .sheet(isPresented: $showBlocked) { BlockedView(texts: texts) }
         .sheet(isPresented: $showAdCheck) { AdCheckView(texts: texts) }
-        .onChange(of: texts.selected) { _, id in
-            if let c = texts.conversations.first(where: { $0.id == id }) { texts.markRead(c) }
+        .onChange(of: texts.selection) { _, ids in
+            // Opening one conversation reads it; selecting several for bulk actions doesn't.
+            if ids.count == 1, let c = picked(ids).first { texts.markRead(c) }
         }
+    }
+}
+
+/// Mark Read, Block and Delete for one or many conversations; used in the context menu and the bulk view.
+private struct BulkActions: View {
+    @ObservedObject var texts: Texts
+    let conversations: [Conversation]
+
+    var body: some View {
+        let n = conversations.count
+        let what = n == 1 ? conversations[0].title : "\(n) Conversations"
+        if conversations.contains(where: { $0.unread > 0 }) {
+            Button("Mark \(n == 1 ? "" : "\(n) ")as Read") { conversations.forEach(texts.markRead) }
+        }
+        Button("Block \(n == 1 ? what : "\(n) Senders")") { texts.block(conversations.map(\.address)) }
+        Button("Delete \(n == 1 ? "Conversation" : what)", role: .destructive) {
+            texts.delete(conversations.flatMap { $0.messages.map(\.id) })
+            texts.selection = []
+        }
+    }
+}
+
+/// Shown when several conversations are selected.
+private struct BulkView: View {
+    @ObservedObject var texts: Texts
+    let conversations: [Conversation]
+    let all: [Int64] // everything the list shows, for Select All
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "checkmark.circle").font(.system(size: 40)).foregroundStyle(.secondary)
+            Text("\(conversations.count) conversations selected").font(.title3.weight(.semibold))
+            Text("⌘-click or ⇧-click to change the selection, ⌘A to select all.")
+                .foregroundStyle(.secondary)
+            HStack {
+                BulkActions(texts: texts, conversations: conversations)
+            }
+            .buttonStyle(.bordered)
+            if conversations.count < all.count {
+                Button("Select All \(all.count)") { texts.selection = Set(all) }.buttonStyle(.link)
+            }
+        }
+        .padding(32)
     }
 }
 

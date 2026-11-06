@@ -18,6 +18,7 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var connect: Button
     private lateinit var forget: Button
+    private lateinit var giveBack: Button
     private val handler = Handler(Looper.getMainLooper())
     private val refresh = object : Runnable {
         override fun run() { render(); handler.postDelayed(this, 1000) }
@@ -33,11 +34,15 @@ class MainActivity : Activity() {
             text = "Forget this Mac"
             setOnClickListener { LinkService.stop(this@MainActivity); Pairing.forget(this@MainActivity); render() }
         }
+        giveBack = Button(this).apply {
+            text = "Make Samsung Messages the SMS app again"
+            setOnClickListener { BatchActivity.handBack(this@MainActivity) }
+        }
         setContentView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(pad, pad, pad, pad)
-            addView(title); addView(status); addView(connect); addView(forget)
+            addView(title); addView(status); addView(giveBack); addView(connect); addView(forget)
         })
         handlePairing(intent)
         // Opening Myna means you want it connected; no need to tap Connect every time.
@@ -78,6 +83,8 @@ class MainActivity : Activity() {
     }
 
     private fun render() {
+        // Left over from a batch: while Myna is the SMS app, Samsung Messages doesn't get texts.
+        giveBack.visibility = if (android.provider.Telephony.Sms.getDefaultSmsPackage(this) == packageName) android.view.View.VISIBLE else android.view.View.GONE
         val pairing = Pairing.load(this)
         if (pairing == null) {
             title.text = "Pair with your Mac"

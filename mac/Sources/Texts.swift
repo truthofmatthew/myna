@@ -64,7 +64,8 @@ final class Texts: NSObject, ObservableObject, UNUserNotificationCenterDelegate 
     @Published private(set) var pending = PhoneBatch()
     @Published private(set) var waitingForPhone = false
     @Published private(set) var problem: String?
-    @Published var selected: Int64?
+    /// Conversation ids selected in the list (⌘-click, ⇧-click or ⌘A for several).
+    @Published var selection: Set<Int64> = []
     private var all: [Int64: TextMessage] = [:]
     private var synced = false
     private let store = UserDefaults.standard
@@ -258,7 +259,7 @@ final class Texts: NSObject, ObservableObject, UNUserNotificationCenterDelegate 
             case "read": if let c { markRead(c) }
             case "delete": delete([id])
             default:
-                selected = thread
+                selection = thread.map { [$0] } ?? []
                 MessagesWindow.show()
             }
         }
@@ -278,6 +279,9 @@ enum MessagesWindow {
             let w = NSWindow(contentViewController: NSHostingController(rootView: MessagesView(texts: .shared)))
             w.title = "Messages"
             w.toolbarStyle = .unified
+            // Content starts below the toolbar; under it, an AppKit-made window gets no blur and text shows through.
+            w.styleMask.remove(.fullSizeContentView)
+            w.titlebarAppearsTransparent = false
             w.setContentSize(NSSize(width: 860, height: 600))
             w.setFrameAutosaveName("Messages")
             w.isReleasedWhenClosed = false

@@ -45,14 +45,14 @@ class BatchActivity : Activity() {
         val batch = Batch.load(this)?.let { JSONObject(it) }
         when {
             batch != null -> {
-                text.text = "Your Mac wants to ${summary(batch)}.\n\nMyna becomes your SMS app for a moment to do it. Afterwards, Samsung Messages asks to be your SMS app again."
+                text.text = "Your Mac wants to ${summary(batch)}.\n\nMyna becomes your SMS app for a moment to do it. Afterwards, pick Samsung Messages again in Default apps; Myna opens it for you."
                 button.text = "Continue"
                 button.setOnClickListener { apply() }
             }
             Telephony.Sms.getDefaultSmsPackage(this) == packageName -> {
-                text.text = "Done. Now make Samsung Messages your SMS app again, or you'll miss picture messages."
-                button.text = "Open Samsung Messages"
-                button.setOnClickListener { handBack() }
+                text.text = "Done. Now pick Samsung Messages as your SMS app again, or you'll miss picture messages."
+                button.text = "Choose SMS App"
+                button.setOnClickListener { handBack(this) }
             }
             else -> {
                 text.text = "Nothing waiting from your Mac."
@@ -74,7 +74,7 @@ class BatchActivity : Activity() {
             val result = run(batch)
             Batch.clear(this)
             LinkService.sendToMac(result)
-            runOnUiThread { button.isEnabled = true; show(); handBack() }
+            runOnUiThread { button.isEnabled = true; show(); handBack(this) }
         }.start()
     }
 
@@ -107,13 +107,13 @@ class BatchActivity : Activity() {
         return JSONObject().put("t", "sms.batch.done").put("id", batch.optString("id")).put("deleted", deleted).put("blocked", blocked)
     }
 
-    /** Apps can't give the SMS role to another app; Samsung Messages asks for it back when it opens. */
-    private fun handBack() {
-        val samsung = packageManager.getLaunchIntentForPackage(SAMSUNG_MESSAGES)
-        startActivity(samsung ?: Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
-    }
-
     companion object {
+        /** Apps can't hand the SMS role to another app, and Samsung Messages doesn't ask for it back on its own: open Default apps. */
+        fun handBack(activity: Activity) {
+            android.widget.Toast.makeText(activity, "Tap SMS app, then Samsung Messages", android.widget.Toast.LENGTH_LONG).show()
+            activity.startActivity(Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
+        }
+
         fun summary(batch: JSONObject): String {
             val parts = listOfNotNull(
                 batch.optJSONArray("delete")?.length()?.takeIf { it > 0 }?.let { "delete $it text${if (it == 1) "" else "s"}" },
