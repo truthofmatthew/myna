@@ -54,3 +54,7 @@ Bugs found on the way:
 - The phone's Wi-Fi was off, so connections went out over mobile data. The app now binds its socket to the Wi-Fi network and says "Turn on Wi-Fi" when there's none.
 - The Mac app freed new connections before the handshake (nothing retained the `PhoneLink`), so the phone hung on "Connecting".
 - Network.framework connections don't show in `lsof`; check from the phone's side or pull a stream from 127.0.0.1:8737 instead.
+
+## Camera polish (November 6, 2026)
+
+Confirmed in Meet (Edge) with meet.google.com's Local network access set back to Ask: the extension's relay frame fetches the streams with its own host permission, so Meet needs no site setting. Mic is Opus at 32 kbit/s (about 3 KB/s on the wire, against about 95 KB/s of raw PCM before).
