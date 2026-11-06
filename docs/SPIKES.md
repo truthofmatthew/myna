@@ -58,3 +58,7 @@ Bugs found on the way:
 ## Camera polish (November 6, 2026)
 
 Confirmed in Meet (Edge) with meet.google.com's Local network access set back to Ask: the extension's relay frame fetches the streams with its own host permission, so Meet needs no site setting. Mic is Opus at 32 kbit/s (about 3 KB/s on the wire, against about 95 KB/s of raw PCM before).
+
+## Phase 2: texts (November 6, 2026)
+
+Confirmed: the Mac's Messages window shows the phone's conversations (newest 2000 of 40,715 texts) with contact names. Not yet confirmed by hand: sending from the Mac and replying from a notification.

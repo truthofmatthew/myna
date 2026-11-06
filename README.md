@@ -7,7 +7,8 @@ Work in progress. The plan is in [docs/PLAN.md](docs/PLAN.md), test results in [
 ## What works so far
 
 - **Phone camera and mic in Google Meet**, over Wi-Fi, through the Chrome extension. Front or back camera; the picture turns upright as you rotate the phone.
-- Texts and calls aren't built yet.
+- **Texts on the Mac**: conversations from the phone, sending, and notifications with a Reply field.
+- Calls aren't built yet.
 
 ## Try it
 
