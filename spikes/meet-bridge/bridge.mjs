@@ -69,13 +69,13 @@ http.createServer(async (req, res) => {
   if (req.url !== '/av') { res.statusCode = 404; return res.end(); }
 
   console.log('client connected, starting phone camera');
-  const proc = startServer();
-  let video, audio;
+  let proc, video, audio;
   try {
+    proc = startServer();
     video = await connectFirst();
     audio = await connect();
   } catch (e) {
-    console.error(e.message); proc.kill(); res.statusCode = 503; return res.end(e.message);
+    console.error(e.message); proc?.kill(); res.statusCode = 503; return res.end(e.message);
   }
   res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store' });
   video.on('data', (d) => res.write(frame(0, d))).resume();
