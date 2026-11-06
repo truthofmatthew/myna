@@ -65,14 +65,25 @@ class LinkService : Service() {
                     hasTransport(NetworkCapabilities.TRANSPORT_WIFI) && hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
                 } == true
             }
-            if (wifi == null) { setStatus("Turn on Wi-Fi to reach ${pairing.name}"); Thread.sleep(3000); continue }
             try {
-                val address = discover(pairing) ?: InetSocketAddress(pairing.host, pairing.port)
+                val address = discover(pairing) ?: findOnHotspot(pairing.port) ?: InetSocketAddress(pairing.host, pairing.port)
                 setStatus("Connecting to ${pairing.name}")
-                val socket = Socket()
-                // Android sometimes refuses the pin with EPERM for a while (seen after a reinstall); the default route still reaches the Mac then.
-                runCatching { wifi.bindSocket(socket) }.onFailure { Log.i(TAG, "not pinned to Wi-Fi: $it") }
-                socket.apply { connect(address, 5000); soTimeout = 30_000; tcpNoDelay = true }
+                // First over Wi-Fi the phone has joined. Then unpinned: that reaches a Mac on the phone's own
+                // hotspot (Android has no Network object for it), and copes with Android refusing the pin (EPERM).
+                val socket = (if (wifi != null) listOf(wifi, null) else listOf(null)).firstNotNullOfOrNull { network ->
+                    val s = Socket()
+                    runCatching {
+                        if (network != null) network.bindSocket(s)
+                        s.connect(address, 5000)
+                        s
+                    }.onFailure { Log.i(TAG, "${if (network != null) "over Wi-Fi" else "unpinned"}: $it"); s.close() }.getOrNull()
+                } ?: run {
+                    if (wifi == null) setStatus("Turn on Wi-Fi or your hotspot to reach ${pairing.name}")
+                    throw java.io.IOException("can't reach $address")
+                }
+                socket.apply { soTimeout = 30_000; tcpNoDelay = true }
+                // Remember where the Mac was, for when Bonjour can't find it next time.
+                address.address.hostAddress?.let { if (it != pairing.host) pairing.copy(host = it).save(this) }
                 Link(socket, pairing.key).use { l ->
                     link = l
                     active = l
@@ -124,6 +135,34 @@ class LinkService : Service() {
     private fun stopMedia() {
         camera?.stop(); camera = null
         mic?.stop(); mic = null
+    }
+
+    /**
+     * When the Mac is on this phone's hotspot, Bonjour doesn't reach it: try Myna's port on each address of the
+     * hotspot's subnet. The handshake that follows still proves it's the paired Mac.
+     */
+    private fun findOnHotspot(port: Int): InetSocketAddress? {
+        val subnets = java.net.NetworkInterface.getNetworkInterfaces().toList()
+            .filter { it.isUp && (it.name.startsWith("swlan") || it.name.startsWith("ap") || it.name.startsWith("softap")) }
+            .flatMap { it.interfaceAddresses }
+            .filter { it.address is java.net.Inet4Address && it.networkPrefixLength >= 24 }
+        if (subnets.isEmpty()) return null
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(32)
+        try {
+            val tries = subnets.flatMap { sub ->
+                val own = sub.address.address
+                (1..254).filter { it != (own[3].toInt() and 0xff) }.map { last ->
+                    val host = java.net.InetAddress.getByAddress(byteArrayOf(own[0], own[1], own[2], last.toByte()))
+                    java.util.concurrent.Callable {
+                        Socket().use { it.connect(InetSocketAddress(host, port), 400) }
+                        InetSocketAddress(host, port)
+                    }
+                }
+            }
+            return runCatching { pool.invokeAny(tries, 3, java.util.concurrent.TimeUnit.SECONDS) }.getOrNull()
+        } finally {
+            pool.shutdownNow()
+        }
     }
 
     /** Finds the paired Mac over Bonjour by its id; null if it doesn't show up within 3 s. */
