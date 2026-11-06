@@ -1,5 +1,5 @@
 // Spike: can the Mac act as a Bluetooth hands-free unit for an Android phone on macOS 27?
-// Usage: hfp "<paired phone name>"  then type: dial <number> | answer | end | audio | phone | quit
+// Usage: hfp "<paired phone name>"  then type: dial <number> | answer | end | audio | sco | phone | quit
 import Foundation
 import IOBluetooth
 
@@ -49,9 +49,10 @@ Thread.detachNewThread {
             case "answer": spike.hf.acceptCall()
             case "end": spike.hf.endCall()
             case "audio": spike.hf.transferAudioToComputer()
+            case "sco": spike.hf.connectSCO()
             case "phone": spike.hf.transferAudioToPhone()
             case "quit": spike.hf.disconnect(); exit(0)
-            default: print("commands: dial <number> | answer | end | audio | phone | quit")
+            default: print("commands: dial <number> | answer | end | audio | sco | phone | quit")
             }
         }
     }

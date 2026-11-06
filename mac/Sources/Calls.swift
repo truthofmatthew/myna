@@ -14,6 +14,12 @@ final class Calls: ObservableObject {
 
     var who: String { name ?? number ?? "Unknown caller" }
 
+    /// You answered or dialed on the Mac, so you're probably not holding the phone: use its loudspeaker.
+    var speakerphone: Bool {
+        get { UserDefaults.standard.object(forKey: "callSpeaker") as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: "callSpeaker"); objectWillChange.send() }
+    }
+
     /// Phone → Mac messages whose type starts with "call.". Main thread.
     func receive(_ m: [String: Any]) {
         switch m["t"] as? String {
@@ -25,19 +31,21 @@ final class Calls: ObservableObject {
             if new != .ringing { UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["call"]) }
             state = new
             if new != .idle { problem = nil }
+        case "call.speaker":
+            if m["on"] as? Bool == false { problem = "The phone didn't switch to speaker. Tap Speaker on the phone." }
         case "call.error":
             problem = m["error"] as? String
         default: break
         }
     }
 
-    func answer() { send(["t": "call.answer"]) }
+    func answer() { send(["t": "call.answer", "speaker": speakerphone]) }
     func end() { send(["t": "call.end"]) }
 
     func dial(_ number: String) {
         let n = number.trimmingCharacters(in: .whitespaces)
         guard !n.isEmpty else { return }
-        send(["t": "call.dial", "number": n])
+        send(["t": "call.dial", "number": n, "speaker": speakerphone])
     }
 
     private func send(_ m: [String: Any]) {

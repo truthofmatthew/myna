@@ -65,6 +65,7 @@ private struct MenuContent: View {
         case .idle: EmptyView()
         }
         if let problem = calls.problem { Text(problem) }
+        Toggle("Speakerphone for Calls from Mac", isOn: Binding(get: { calls.speakerphone }, set: { calls.speakerphone = $0 }))
         Divider()
         Button("Messages…") { MessagesWindow.show() }
             .keyboardShortcut("m")

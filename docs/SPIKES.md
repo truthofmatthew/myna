@@ -66,3 +66,9 @@ Confirmed: the Mac's Messages window shows the phone's conversations (newest 200
 ## SMS role batches (November 6, 2026)
 
 Apply on Phone worked: Myna took the SMS role and applied the batch. But Samsung Messages did **not** ask for the role back when opened, so Myna stayed the SMS app (and got incoming texts) until it was given back with `adb shell cmd role add-role-holder android.app.role.SMS com.samsung.android.messaging`. The phone now opens Default apps after a batch, and Myna's main screen shows a give-back button while it holds the role.
+
+## Call audio on the Mac: second try (November 6, 2026)
+
+Retried with `IOBluetoothHandsFreeDevice.connectSCO()` (not just `transferAudioToComputer`) during an active call to 162: refused again with `kIOReturnUnsupported` (0xE00002C7). No Bluetooth audio device appears on the Mac, and the phone falls back to its earpiece 0.6 s after trying the Mac. Settled: macOS 27 doesn't carry call audio for third-party apps. Calls stay control-only; when the Mac answers or dials, the phone switches to its loudspeaker (menu toggle "Speakerphone for Calls from Mac").
+
+Calling from the Messages window works (confirmed by hand).
