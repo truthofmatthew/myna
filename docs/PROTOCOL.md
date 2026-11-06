@@ -83,6 +83,21 @@ Phone → Mac:
 - `{"t":"sms.batch.done","id":"<uuid>","deleted":[ids],"blocked":["…"]}`: the batch ran; `blocked` is the phone's whole block list afterwards.
 - `{"t":"sms.error","error":"…"}`: texts aren't available, for example because SMS permission wasn't granted.
 
+## Calls
+
+Control only: the conversation stays on the phone (or earbuds connected to it). macOS 27 won't let an app carry call audio, and Android won't let one relay it.
+
+Phone → Mac:
+
+- `{"t":"call.state","state":"ringing","number":"+98912…","name":"Sara"}`: sent on every change. `state` is `ringing` (incoming), `dialing` (outgoing, not answered yet), `active`, or `idle` (no call). `number` and `name` may be missing.
+
+Mac → phone:
+
+- `{"t":"call.answer"}`: answer the ringing call.
+- `{"t":"call.end"}`: decline a ringing call, or hang up.
+- `{"t":"call.dial","number":"+98912…"}`: place a call from the phone's default SIM.
+- `{"t":"call.error","error":"…"}` (phone → Mac): a call permission is missing, or Android refused.
+
 ## Mac to Chrome
 
 The Mac app serves the streams on `http://127.0.0.1:8737` for the Chrome extension:

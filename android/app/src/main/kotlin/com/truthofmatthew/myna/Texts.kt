@@ -8,10 +8,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.database.ContentObserver
-import android.net.Uri
 import android.os.Handler
 import android.os.HandlerThread
-import android.provider.ContactsContract
 import android.provider.Telephony
 import android.telephony.SmsManager
 import org.json.JSONArray
@@ -111,13 +109,7 @@ class Texts(private val context: Context, private val send: (JSONObject) -> Unit
         return out
     }
 
-    private fun name(address: String): String? = names.getOrPut(address) {
-        if (context.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return null
-        val uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(address))
-        resolver.query(uri, arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME), null, null, null)?.use { c ->
-            if (c.moveToFirst()) c.getString(0) else null
-        }
-    }
+    private fun name(address: String): String? = names.getOrPut(address) { contactName(context, address) }
 
     companion object {
         private const val ACTION_SENT = "com.truthofmatthew.myna.SMS_SENT"

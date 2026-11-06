@@ -112,6 +112,10 @@ class MainActivity : Activity() {
             Manifest.permission.READ_SMS,
             Manifest.permission.SEND_SMS,
             Manifest.permission.READ_CONTACTS,
+            Manifest.permission.READ_PHONE_STATE,
+            Manifest.permission.READ_CALL_LOG,
+            Manifest.permission.ANSWER_PHONE_CALLS,
+            Manifest.permission.CALL_PHONE,
         )
     }
 }

@@ -264,6 +264,13 @@ private struct ConversationView: View {
             }
             .padding(12)
         }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { Calls.shared.dial(address) } label: { Label("Call", systemImage: "phone") }
+                    .help(address.isEmpty ? "Type a number to call" : "Call \(address) from your phone")
+                    .disabled(address.isEmpty)
+            }
+        }
         .navigationTitle(conversation?.title ?? "New Message")
         .navigationSubtitle(conversation.flatMap { $0.title == $0.address ? nil : $0.address } ?? "")
         .onAppear { typing = true }

@@ -31,6 +31,7 @@ class LinkService : Service() {
     private var camera: CameraStream? = null
     private var mic: MicStream? = null
     private var texts: Texts? = null
+    private var calls: Calls? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -77,6 +78,7 @@ class LinkService : Service() {
                     active = l
                     l.sendMessage(JSONObject().put("t", "hello").put("name", deviceName()).put("app", 1))
                     texts = Texts(this) { runCatching { l.sendMessage(it) } }.also { it.start() }
+                    calls = Calls(this) { runCatching { l.sendMessage(it) } }.also { it.start() }
                     setStatus("Connected to ${pairing.name}")
                     while (running) {
                         val (type, body) = l.receive()
@@ -89,6 +91,7 @@ class LinkService : Service() {
                 link = null
                 active = null
                 texts?.stop(); texts = null
+                calls?.stop(); calls = null
                 stopMedia()
             }
             if (running) { setStatus("Waiting for ${Pairing.load(this)?.name ?: "your Mac"}"); Thread.sleep(2000) }
@@ -98,6 +101,7 @@ class LinkService : Service() {
     private fun handle(l: Link, message: JSONObject) {
         val t = message.optString("t")
         if (t.startsWith("sms.")) { texts?.handle(message); return }
+        if (t.startsWith("call.")) { calls?.handle(message); return }
         when (t) {
             "ping" -> l.sendMessage(JSONObject().put("t", "pong"))
             "camera" -> {

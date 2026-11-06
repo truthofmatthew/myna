@@ -83,7 +83,7 @@ final class Texts: NSObject, ObservableObject, UNUserNotificationCenterDelegate 
                                                   textInputButtonTitle: "Send", textInputPlaceholder: "Text message")
         let read = UNNotificationAction(identifier: "read", title: "Mark as Read")
         let delete = UNNotificationAction(identifier: "delete", title: "Delete", options: [.destructive])
-        center.setNotificationCategories([UNNotificationCategory(identifier: "text", actions: [reply, read, delete], intentIdentifiers: [])])
+        center.setNotificationCategories([UNNotificationCategory(identifier: "text", actions: [reply, read, delete], intentIdentifiers: []), Calls.category])
         center.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }
 
@@ -248,6 +248,16 @@ final class Texts: NSObject, ObservableObject, UNUserNotificationCenterDelegate 
         let info = response.notification.request.content.userInfo
         let id = (info["id"] as? NSNumber)?.int64Value ?? -1
         let thread = (info["thread"] as? NSNumber)?.int64Value
+        if response.notification.request.content.categoryIdentifier == "call" {
+            await MainActor.run {
+                switch response.actionIdentifier {
+                case "answer": Calls.shared.answer()
+                case "decline": Calls.shared.end()
+                default: break
+                }
+            }
+            return
+        }
         await MainActor.run {
             let c = conversations.first { $0.id == thread }
             switch response.actionIdentifier {

@@ -8,7 +8,7 @@ Work in progress. The plan is in [docs/PLAN.md](docs/PLAN.md), test results in [
 
 - **Phone camera and mic in Google Meet**, over Wi-Fi, through the Chrome extension. Front or back camera; the picture turns upright as you rotate the phone.
 - **Texts on the Mac**: conversations from the phone, sending, and notifications with a Reply field.
-- Calls aren't built yet.
+- **Calls from the Mac**: incoming-call notifications with Answer and Decline, Hang Up in the menu, and a Call button in Messages. You talk on the phone; macOS doesn't let apps carry call audio.
 
 ## Try it
 

@@ -70,6 +70,7 @@ final class Hub: ObservableObject {
         }
         link.onMessage = { [weak self] m in
             if let t = m["t"] as? String, t.hasPrefix("sms.") { return DispatchQueue.main.async { Texts.shared.receive(m) } }
+            if let t = m["t"] as? String, t.hasPrefix("call.") { return DispatchQueue.main.async { Calls.shared.receive(m) } }
             guard let self, m["t"] as? String == "video",
                   let w = m["w"] as? Int, let h = m["h"] as? Int, let rotation = m["rotation"] as? Int else { return }
             let packet = Self.header(UInt64(0x8000_0000 | UInt32(rotation)) << 32 | UInt64(w), size: UInt32(h))
@@ -86,6 +87,7 @@ final class Hub: ObservableObject {
             self.phone = nil
             self.config = nil
             self.publish { $0.phoneName = nil }
+            DispatchQueue.main.async { Calls.shared.receive(["t": "call.state", "state": "idle"]) }
         }
         handshaking.append(link)
         link.start()

@@ -40,6 +40,7 @@ private struct MenuIcon: View {
 
 private struct MenuContent: View {
     @ObservedObject var hub: Hub
+    @ObservedObject var calls = Calls.shared
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -51,6 +52,19 @@ private struct MenuContent: View {
             Text("Phone not connected")
         }
         if let problem = hub.problem { Text(problem) }
+        switch calls.state {
+        case .ringing:
+            Divider()
+            Text("Incoming call: \(calls.who)")
+            Button("Answer") { calls.answer() }
+            Button("Decline") { calls.end() }
+        case .dialing, .active:
+            Divider()
+            Text(calls.state == .dialing ? "Calling \(calls.who)…" : "On a call with \(calls.who)")
+            Button("Hang Up") { calls.end() }
+        case .idle: EmptyView()
+        }
+        if let problem = calls.problem { Text(problem) }
         Divider()
         Button("Messages…") { MessagesWindow.show() }
             .keyboardShortcut("m")
