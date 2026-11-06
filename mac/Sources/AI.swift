@@ -60,7 +60,7 @@ struct AIClient {
         var errorDescription: String? {
             switch self {
             case .unreachable(let p): "Couldn't reach \(p). Check that it's running, or pick another provider."
-            case .http(let code, _) where code == 401 || code == 403: "\(code) Unauthorized. Check the API key."
+            case .http(let code, let msg) where code == 401 || code == 403: "The API key was refused (\(code))\(msg.isEmpty ? "" : ": \(msg)")."
             case .http(let code, let msg): "HTTP \(code)\(msg.isEmpty ? "" : ": \(msg)")"
             case .unreadable: "The model's answer wasn't readable. Try again, or pick a larger model."
             }

@@ -92,12 +92,20 @@ struct AdCheckView: View {
         .frame(width: 560)
         .task(id: providerName) {
             if Demo.on { providerName = AIProvider.ollama.rawValue; models = ["llama3.2"]; model = "llama3.2"; verdicts = Demo.adVerdicts(); chosen = ["MegaMart", "+15550177"]; return }
+            key = provider.key
+            await loadModels()
+        }
+        // A new key is saved and tried once typing stops; Check Texts needs the model list it brings.
+        .task(id: key) {
+            guard !provider.isLocal, key != provider.key else { return }
+            try? await Task.sleep(for: .milliseconds(600))
+            guard !Task.isCancelled else { return }
+            provider.key = key
             await loadModels()
         }
     }
 
     private func loadModels() async {
-        key = provider.key
         models = []
         error = nil
         do {
