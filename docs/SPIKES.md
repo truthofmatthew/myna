@@ -61,4 +61,4 @@ Confirmed in Meet (Edge) with meet.google.com's Local network access set back to
 
 ## Phase 2: texts (November 6, 2026)
 
-Confirmed: the Mac's Messages window shows the phone's conversations (newest 2000 of 40,715 texts) with contact names. Not yet confirmed by hand: sending from the Mac and replying from a notification.
+Confirmed: the Mac's Messages window shows the phone's conversations (newest 2000 of 40,715 texts) with contact names. Sending texts from the Mac works too. Not yet confirmed by hand: replying from a notification.
