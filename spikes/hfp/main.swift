@@ -28,6 +28,7 @@ final class Spike: NSObject, IOBluetoothHandsFreeDeviceDelegate {
 
 func log(_ s: String) { print("[\(Date().formatted(date: .omitted, time: .standard))] \(s)") }
 
+setvbuf(stdout, nil, _IOLBF, 0) // flush each line when stdout is a file
 let name = CommandLine.arguments.dropFirst().first ?? "S24"
 let paired = (IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice]) ?? []
 guard let phone = paired.first(where: { ($0.name ?? "").localizedCaseInsensitiveContains(name) }) else {
