@@ -116,7 +116,7 @@ struct AIClient {
 
     func chat(system: String, user: String) async throws -> String {
         if provider == .claude {
-            let body: [String: Any] = ["model": model, "max_tokens": 4096, "temperature": 0, "system": system,
+            let body: [String: Any] = ["model": model, "max_tokens": 4096, "system": system,
                                        "messages": [["role": "user", "content": user]]]
             let data = try await send(request("/messages", body: body, timeout: 120))
             return ((((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["content"] as? [[String: Any]]) ?? [])
