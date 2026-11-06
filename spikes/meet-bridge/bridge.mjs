@@ -11,6 +11,9 @@ const SERVER_JAR = process.env.SCRCPY_SERVER || '/opt/homebrew/share/scrcpy/scrc
 const SERVER_VERSION = process.env.SCRCPY_VERSION || '5.0.1';
 const here = new URL('.', import.meta.url).pathname;
 const CAMERA = process.env.MYNA_CAMERA || '1'; // 1 = front on the S24 FE
+// Clockwise rotation applied on the phone: 0, 90, 180, 270, or flip0…flip270 to also mirror.
+// shortcut: fixed per run; the Android app will follow the phone's rotation instead.
+const ORIENTATION = process.env.MYNA_ORIENTATION || '0';
 
 const adb = (...args) => execFileSync('adb', args, { encoding: 'utf8' });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -21,7 +24,7 @@ function startServer() {
   adb('forward', `tcp:${ADB_PORT}`, `localabstract:scrcpy_${scid}`);
   const proc = spawn('adb', ['shell', `CLASSPATH=/data/local/tmp/myna-scrcpy.jar app_process / com.genymobile.scrcpy.Server ${SERVER_VERSION}`,
     `scid=${scid}`, 'log_level=info', 'tunnel_forward=true', 'control=false', 'send_device_meta=false',
-    'video_source=camera', `camera_id=${CAMERA}`, 'camera_size=1280x720', 'camera_fps=30', 'video_codec=h264',
+    'video_source=camera', `camera_id=${CAMERA}`, `capture_orientation=${ORIENTATION}`, 'camera_size=1280x720', 'camera_fps=30', 'video_codec=h264',
     'video_bit_rate=4000000', 'audio_source=mic', 'audio_codec=raw']);
   proc.stdout.on('data', (d) => process.stdout.write(`[phone] ${d}`));
   proc.stderr.on('data', (d) => process.stdout.write(`[phone] ${d}`));
