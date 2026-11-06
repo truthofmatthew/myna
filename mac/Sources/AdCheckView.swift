@@ -1,11 +1,15 @@
 import SwiftUI
 
 /// Asks a model which senders are advertising, then lets you review and block them in bulk.
+/// The provider, key and model are set in Settings; this sheet only shows which one it will use.
 struct AdCheckView: View {
     @ObservedObject var texts: Texts
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openWindow) private var openWindow
     @AppStorage("aiProvider") private var providerName = AIProvider.ollama.rawValue
     @AppStorage("aiModel") private var model = ""
+    @State private var hasKey = false
+    @State private var senders = 0
     @State private var running = false
     @State private var checked = 0
     @State private var total = 0
@@ -14,25 +18,50 @@ struct AdCheckView: View {
     @State private var chosen: Set<String> = []
 
     private var provider: AIProvider { AIProvider(rawValue: providerName) ?? .ollama }
+    private var ready: Bool { !model.isEmpty && (provider.isLocal || hasKey) }
+    private var company: String { provider == .claude ? "Anthropic" : "OpenAI" }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Find Ads").font(.title2.weight(.semibold))
-            Form {
-                AIFields(error: $error)
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "sparkles")
+                    .font(.title2)
+                    .foregroundStyle(.tint)
+                    .frame(width: 40, height: 40)
+                    .background(.tint.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Find Ads").font(.title2.weight(.semibold))
+                    Text("An AI reads the latest texts from the \(senders.formatted()) senders you've never replied to and marks the ones that advertise. You choose who to block.")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
-            .formStyle(.grouped)
-            .frame(height: provider.isLocal ? 110 : 150)
 
-            Text(provider.isLocal
-                 ? "Runs on this Mac. Your texts don't leave it."
-                 : "The last few texts from each sender you never replied to are sent to \(provider == .claude ? "Anthropic" : "OpenAI"). Personal conversations aren't sent.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            HStack(spacing: 12) {
+                Image(systemName: provider.isLocal ? "desktopcomputer" : "cloud")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(ready ? "\(provider.rawValue) · \(model)" : "Choose an AI in Settings first")
+                        .font(.body.weight(.medium))
+                    Text(provider.isLocal ? "Runs on this Mac. Your texts don't leave it."
+                                          : "Sends each sender's last 3 texts to \(company). Conversations you've replied to aren't sent.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button(ready ? "Change…" : "Open Settings…") {
+                    openWindow(id: "settings")
+                    NSApp.activate()
+                }
+            }
+            .padding(12)
+            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
 
             if running {
                 ProgressView(value: Double(checked), total: Double(max(total, 1))) {
-                    Text("Checked \(checked) of \(total) senders…")
+                    Text("Checked \(checked) of \(total) senders…").monospacedDigit()
                 }
             } else if let error {
                 Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
@@ -62,22 +91,36 @@ struct AdCheckView: View {
             }
 
             HStack {
-                Button(verdicts.isEmpty ? "Check Texts" : "Check Again", action: check)
-                    .disabled(running || model.isEmpty)
+                if !verdicts.isEmpty {
+                    Button("Check Again", action: check).disabled(running || !ready)
+                }
                 Spacer()
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Block \(chosen.count) Sender\(chosen.count == 1 ? "" : "s")") {
-                    texts.block(Array(chosen))
-                    dismiss()
+                if verdicts.isEmpty {
+                    Button("Check \(senders.formatted()) Sender\(senders == 1 ? "" : "s")", action: check)
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(running || !ready || senders == 0)
+                } else {
+                    Button("Block \(chosen.count) Sender\(chosen.count == 1 ? "" : "s")") {
+                        texts.block(Array(chosen))
+                        dismiss()
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(chosen.isEmpty)
                 }
-                .keyboardShortcut(.defaultAction)
-                .disabled(chosen.isEmpty)
             }
+            .controlSize(.large)
         }
-        .padding(20)
+        .padding(24)
         .frame(width: 560)
         .task {
-            if Demo.on { verdicts = Demo.adVerdicts(); chosen = ["MegaMart", "+15550177"] }
+            senders = texts.adCandidates().count
+            if Demo.on { providerName = AIProvider.ollama.rawValue; model = "llama3.2"; verdicts = Demo.adVerdicts(); chosen = ["MegaMart", "+15550177"] }
+        }
+        // Settings can change the key while this sheet is open; look again when a window comes forward.
+        .task(id: providerName) { hasKey = !provider.key.isEmpty }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+            hasKey = !provider.key.isEmpty
         }
     }
 
