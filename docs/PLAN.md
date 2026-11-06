@@ -28,10 +28,10 @@ Myna links an Android phone to a Mac: texts, calls, and the phone's camera and m
 - Replies go through the notification's reply action, so RCS replies work. New threads are sent with `SmsManager`.
 - On the Mac: a conversations window and notifications with a Reply field.
 
-**Calls**
-- The Mac acts as a Bluetooth headset (`IOBluetoothHandsFreeDevice`), so the phone sends call audio itself. Android can't relay cellular call audio over Wi-Fi without a system-only permission.
-- The app sends contacts, caller names and call history over Wi-Fi.
-- Fallback, control-only mode: answer, reject and dial with `ANSWER_PHONE_CALLS` and `CALL_PHONE`; the audio stays on the phone.
+**Calls** (control-only; see SPIKES.md)
+- The Mac connects as a Bluetooth hands-free device (`IOBluetoothHandsFreeDevice`) to dial, answer, reject, hang up and get caller ID and call state.
+- macOS 27 refuses hands-free call audio (`kIOReturnUnsupported`), and Android can't relay cellular call audio over Wi-Fi. The conversation stays on the phone.
+- The Android app adds contact names and call history over Wi-Fi.
 
 **Camera and mic**
 - Android: a foreground service (camera and microphone types) captures with CameraX, encodes H.264 with MediaCodec, and sends 48 kHz mono PCM audio.
