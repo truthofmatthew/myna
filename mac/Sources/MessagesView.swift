@@ -66,6 +66,9 @@ struct MessagesView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) { StatusBars(texts: texts) }
         .sheet(isPresented: $showBlocked) { BlockedView(texts: texts) }
         .sheet(isPresented: $showAdCheck) { AdCheckView(texts: texts) }
+        .onAppear {
+            if Demo.on { showAdCheck = Demo.scene == "ads"; showBlocked = Demo.scene == "blocked" }
+        }
         .onChange(of: texts.selection) { _, ids in
             // Opening one conversation reads it; selecting several for bulk actions doesn't.
             if ids.count == 1, let c = picked(ids).first { texts.markRead(c) }

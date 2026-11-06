@@ -68,7 +68,7 @@ final class Texts: NSObject, ObservableObject, UNUserNotificationCenterDelegate 
     @Published var selection: Set<Int64> = []
     private var all: [Int64: TextMessage] = [:]
     private var synced = false
-    private let store = UserDefaults.standard
+    private let store = Demo.on ? Demo.store : UserDefaults.standard
 
     override init() {
         super.init()
@@ -135,7 +135,7 @@ final class Texts: NSObject, ObservableObject, UNUserNotificationCenterDelegate 
         for id in unread { all[id]?.read = true }
         rebuild()
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: unread.map { "text-\($0)" })
-        if !Hub.shared.sendToPhone(["t": "sms.read", "address": c.address, "name": c.title, "ids": unread]) {
+        if !Demo.on, !Hub.shared.sendToPhone(["t": "sms.read", "address": c.address, "name": c.title, "ids": unread]) {
             update { $0.read.formUnion(unread) }
         }
     }

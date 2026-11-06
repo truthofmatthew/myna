@@ -6,6 +6,7 @@ struct MynaApp: App {
     @StateObject private var hub = Hub.shared
 
     init() {
+        if Demo.on { Texts.shared.receive(["t": "sms.list", "messages": Demo.texts()]); return }
         Texts.shared.setUp()
         Hub.shared.start()
     }
@@ -14,12 +15,17 @@ struct MynaApp: App {
         MenuBarExtra {
             MenuContent(hub: hub)
         } label: {
-            MenuIcon(connected: hub.phoneName != nil)
+            MenuIcon(connected: hub.phoneName != nil || Demo.on)
         }
         Window("Messages", id: "messages") {
             MessagesView(texts: .shared)
         }
         .defaultSize(width: 860, height: 600)
+        Window("About Myna", id: "about") {
+            AboutView()
+        }
+        .windowResizability(.contentSize)
+        .windowStyle(.hiddenTitleBar)
         Window("Pair Phone", id: "pair") {
             PairView()
         }
@@ -34,7 +40,14 @@ private struct MenuIcon: View {
     var body: some View {
         Image(systemName: connected ? "candybarphone.fill" : "candybarphone")
             .accessibilityLabel("Myna")
-            .onAppear { MessagesWindow.open = { openWindow(id: "messages") } }
+            .onAppear {
+                MessagesWindow.open = { openWindow(id: "messages") }
+                if Demo.on {
+                    Texts.shared.selection = [1]
+                    openWindow(id: ["about": "about", "pair": "pair"][Demo.scene] ?? "messages")
+                    NSApp.activate()
+                }
+            }
     }
 }
 
@@ -77,12 +90,16 @@ private struct MenuContent: View {
             get: { SMAppService.mainApp.status == .enabled },
             set: { on in try? on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister() }))
         Divider()
+        Button("About Myna") {
+            openWindow(id: "about")
+            NSApp.activate()
+        }
         Button("Quit Myna") { NSApp.terminate(nil) }.keyboardShortcut("q")
     }
 }
 
 private struct PairView: View {
-    @State private var link = Pairing.link(key: Pairing.key() ?? Pairing.newKey())
+    @State private var link = Pairing.link(key: Demo.on ? Demo.pairingKey : Pairing.key() ?? Pairing.newKey())
 
     var body: some View {
         VStack(spacing: 16) {
@@ -99,7 +116,8 @@ private struct PairView: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .frame(width: 300)
-            Button("Make a new code") { link = Pairing.link(key: Pairing.newKey()) }
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Make a new code") { if !Demo.on { link = Pairing.link(key: Pairing.newKey()) } }
                 .help("The phone paired with the old code stops connecting.")
         }
         .padding(28)

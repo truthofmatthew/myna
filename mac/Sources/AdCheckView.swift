@@ -90,7 +90,10 @@ struct AdCheckView: View {
         }
         .padding(20)
         .frame(width: 560)
-        .task(id: providerName) { await loadModels() }
+        .task(id: providerName) {
+            if Demo.on { providerName = AIProvider.ollama.rawValue; models = ["llama3.2"]; model = "llama3.2"; verdicts = Demo.adVerdicts(); chosen = ["MegaMart", "+15550177"]; return }
+            await loadModels()
+        }
     }
 
     private func loadModels() async {
