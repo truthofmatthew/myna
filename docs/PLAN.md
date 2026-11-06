@@ -59,3 +59,7 @@ Myna links an Android phone to a Mac: texts, calls, and the phone's camera and m
 
 - The camera extension needs a Developer ID, the system-extension entitlement, notarization, and the app installed in `/Applications`.
 - The audio plug-in installs to `/Library/Audio/Plug-Ins/HAL` with an admin password.
+
+## Later: call audio on the Mac
+
+Not possible with the Mac's built-in Bluetooth (macOS refuses hands-free audio for apps) or through Android (no app may capture or inject cell call audio). It is possible with a USB Bluetooth adapter (CSR8510 or Realtek RTL8761B) driven by BTstack over libusb, after `sudo nvram bluetoothHostControllerSwitchBehavior=never`: Myna would act as a Bluetooth headset with the Mac's mic and speakers. BTstack is free for non-commercial use only, so it would be an optional add-on. Decided November 6, 2026: keep speakerphone for now.
