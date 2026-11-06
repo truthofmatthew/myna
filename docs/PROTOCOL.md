@@ -69,7 +69,7 @@ A message object: `{"id":55743,"thread":12,"address":"+989121234567","name":"Sar
 
 Mac → phone:
 
-- `{"t":"sms.sync"}`: send every text on the phone. The Mac sends this after every `hello`.
+- `{"t":"sms.sync","limit":0,"since":0}`: send the newest `limit` texts (0 for all). The Mac sends this after every `hello`. With `since`, the Mac already has every text up to that id (SMS ids only grow): the phone answers with `sms.state`, then only the newer texts as `sms.more` pages.
 - `{"t":"sms.send","to":"+989121234567","body":"…","ref":"<uuid>"}`: send a text from the phone's default SMS SIM.
 - `{"t":"sms.read","address":"…","name":"…","ids":[…]}`: mark a conversation read by pressing "Mark as read" on Samsung Messages' notification for it (needs Notification access on the phone).
 - `{"t":"sms.batch","id":"<uuid>","delete":[ids],"read":[ids],"block":["…"],"unblock":["…"]}`: changes only the SMS app may make. The phone saves the batch and shows a notification; when you tap it, Myna takes the SMS role, applies the batch, and opens Samsung Messages so it can take the role back. An empty batch just reads the phone's block list.
@@ -78,6 +78,7 @@ Phone → Mac:
 
 - `{"t":"sms.list","messages":[…]}`: answer to `sms.sync`: the newest 1,000 texts, newest first. It replaces the Mac's list.
 - `{"t":"sms.more","messages":[…]}`: the rest of the history after `sms.list`, 1,000 texts per message, newest first. The Mac adds these without notifying.
+- `{"t":"sms.state","ids":[…],"unread":[…],"new":12}`: answer to `sms.sync` with `since`: the ids of the newest `limit` texts still on the phone, which received ones are unread, and how many newer texts follow. The Mac drops texts not in `ids`.
 - `{"t":"sms.new","messages":[…]}`: messages that appeared since the last list, received or sent (including ones typed on the phone).
 - `{"t":"sms.sent","ref":"<uuid>","ok":true}`: the carrier accepted (or refused) a text the Mac asked to send.
 - `{"t":"sms.read.done","ids":[…],"ok":false}`: no notification to press; the Mac adds the ids to its next batch.

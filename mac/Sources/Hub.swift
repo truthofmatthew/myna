@@ -66,7 +66,7 @@ final class Hub: ObservableObject {
             // A reconnecting phone picks up whatever the browser is already using.
             if !self.videoViewers.isEmpty { link.send(message: ["t": "camera", "on": true, "camera": self.camera]) }
             if !self.audioViewers.isEmpty { link.send(message: ["t": "mic", "on": true]) }
-            link.send(message: Texts.syncRequest)
+            DispatchQueue.main.async { Texts.shared.syncWithPhone() }  // after the publish above sets phoneName
         }
         link.onMessage = { [weak self] m in
             if let t = m["t"] as? String, t.hasPrefix("sms.") { return DispatchQueue.main.async { Texts.shared.receive(m) } }

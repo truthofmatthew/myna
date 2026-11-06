@@ -72,6 +72,8 @@ final class Texts: NSObject, ObservableObject, UNUserNotificationCenterDelegate 
     @Published var selection: Set<Int64> = []
     private var all: [Int64: TextMessage] = [:]
     private var synced = false
+    /// True once a load finished; a reconnect then asks only for what changed. A load cut short starts over.
+    private var complete = false
     private let store = Demo.on ? Demo.store : UserDefaults.standard
 
     override init() {
@@ -101,11 +103,23 @@ final class Texts: NSObject, ObservableObject, UNUserNotificationCenterDelegate 
             // newest texts show at once, and for the last; rebuilding 40,000 texts after every page froze the app.
             let first = m["t"] as? String == "sms.list"
             let done = m["done"] as? Bool ?? true
-            if first { all = [:]; loaded = 0 }
+            if first { all = [:]; loaded = 0; complete = false }
             loaded += add(m["messages"], rebuild: first || done).count
             toLoad = done ? loaded : max(m["total"] as? Int ?? 0, loaded)
+            if done { complete = true }
             synced = true
             if first { problem = nil }
+        case "sms.state":
+            // A reconnect: drop texts deleted on the phone (or now past the limit) and take its read marks.
+            // The newer texts follow as sms.more pages.
+            let onPhone = Set(ids(m["ids"])), unread = Set(ids(m["unread"]))
+            all = all.filter { onPhone.contains($0.key) }
+            for (id, t) in all where !t.mine { all[id]?.read = !unread.contains(id) || pending.read.contains(id) }
+            rebuild()
+            loaded = 0
+            toLoad = m["new"] as? Int ?? 0
+            complete = false
+            problem = nil
         case "sms.new":
             let fresh = add(m["messages"])
             if synced { fresh.filter { !$0.mine && !isBlocked($0.address) }.forEach(notify) }
@@ -123,7 +137,8 @@ final class Texts: NSObject, ObservableObject, UNUserNotificationCenterDelegate 
             waitingForPhone = false
             rebuild()
         case "sms.stopped":
-            toLoad = loaded  // the phone went away mid-sync; the next connect starts over
+            if isLoading { complete = false }  // the phone went away mid-load; the next connect starts over
+            toLoad = loaded
         case "sms.error":
             problem = m["error"] as? String
         default: break
@@ -134,10 +149,12 @@ final class Texts: NSObject, ObservableObject, UNUserNotificationCenterDelegate 
 
     /// How many of the newest texts to load, set in Settings; 0 loads them all.
     static let limitKey = "textsToLoad"
-    static var syncRequest: [String: Any] { ["t": "sms.sync", "limit": UserDefaults.standard.integer(forKey: limitKey)] }
 
-    /// Loads the texts again, after the limit changes in Settings.
-    func resync() { _ = Hub.shared.sendToPhone(Self.syncRequest) }
+    /// Asks the phone for its texts: everything the first time, then only what changed since the newest one here.
+    func syncWithPhone(full: Bool = false) {
+        let since = full || !complete ? 0 : all.keys.max() ?? 0
+        _ = Hub.shared.sendToPhone(["t": "sms.sync", "limit": UserDefaults.standard.integer(forKey: Self.limitKey), "since": since])
+    }
 
     func send(to address: String, body: String) {
         let body = body.trimmingCharacters(in: .whitespacesAndNewlines)

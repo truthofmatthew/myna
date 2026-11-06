@@ -17,11 +17,11 @@ struct SettingsView: View {
                     Text("Newest 20,000").tag(20000)
                     Text("All texts").tag(0)
                 }
-                .onChange(of: limit) { Texts.shared.resync() }
+                .onChange(of: limit) { Texts.shared.syncWithPhone(full: true) }
             } header: {
                 Text("Texts")
             } footer: {
-                Text("Load all of them to find ad senders who haven't texted you in a while. A long history takes a little longer each time the phone connects.")
+                Text("Load all of them to find ad senders who haven't texted you in a while. A long history takes a minute or two when Myna starts; after that, a reconnect only fetches what changed.")
                     .foregroundStyle(.secondary)
             }
 

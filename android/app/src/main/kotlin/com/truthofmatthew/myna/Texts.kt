@@ -58,7 +58,7 @@ class Texts(private val context: Context, private val send: (JSONObject) -> Unit
     fun handle(message: JSONObject) = handler.post {
         if (!allowed) return@post send(JSONObject().put("t", "sms.error").put("error", "Allow Myna to read and send SMS on the phone."))
         when (message.optString("t")) {
-            "sms.sync" -> sync(message.optInt("limit"))
+            "sms.sync" -> sync(message.optInt("limit"), message.optLong("since"))
             "sms.send" -> sendText(message.optString("to"), message.optString("body"), message.optString("ref"))
             "sms.read" -> {
                 // Prefer Samsung's own "Mark as read" button; otherwise the Mac adds it to a batch.
@@ -95,24 +95,43 @@ class Texts(private val context: Context, private val send: (JSONObject) -> Unit
     /**
      * The newest [limit] texts (0 for all of them), newest first, in pages: the first replaces the Mac's list so it
      * fills fast, the rest add to it. Each page carries the total for the Mac's progress bar; the last says done.
+     * With [since], a reconnecting Mac already has the texts up to that id: it gets the state of what it has, then
+     * only the newer texts (SMS ids only grow).
      */
-    private fun sync(limit: Int) {
+    private fun sync(limit: Int, since: Long) {
+        if (since > 0) sendState(limit, since)
         var page = ArrayList<JSONObject>()
         var sent = 0
         var total = 0
         fun flush(done: Boolean) {
-            send(JSONObject().put("t", if (sent == 0) "sms.list" else "sms.more").put("messages", JSONArray(page))
+            send(JSONObject().put("t", if (sent == 0 && since == 0L) "sms.list" else "sms.more").put("messages", JSONArray(page))
                 .put("total", total).put("done", done))
             sent += page.size
             page = ArrayList()
         }
-        walk("1=1", emptyArray(), { total = if (limit > 0) minOf(limit, it) else it }) {
+        walk("_id > ?", arrayOf(since.toString()), { total = if (limit > 0) minOf(limit, it) else it }) {
             page += it
             val last = sent + page.size == total
             if (page.size == PAGE || last) flush(last)
             !last
         }
         if (sent == 0 || page.isNotEmpty()) flush(true)
+    }
+
+    /** Which of the newest [limit] texts still exist and which are unread, so the Mac can drop deleted ones and fix read marks. */
+    private fun sendState(limit: Int, since: Long) {
+        val ids = JSONArray()
+        val unread = JSONArray()
+        var fresh = 0
+        resolver.query(Telephony.Sms.CONTENT_URI, arrayOf("_id", "type", "read"), null, null, "date DESC")?.use { c ->
+            while (c.moveToNext() && (limit == 0 || ids.length() < limit)) {
+                val id = c.getLong(0)
+                ids.put(id)
+                if (c.getInt(1) == 1 && c.getInt(2) == 0) unread.put(id)
+                if (id > since) fresh++
+            }
+        }
+        send(JSONObject().put("t", "sms.state").put("ids", ids).put("unread", unread).put("new", fresh))
     }
 
     /** Newest first. */
