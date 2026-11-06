@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import UserNotifications
 
 struct TextMessage: Identifiable, Hashable {
@@ -10,6 +11,7 @@ struct TextMessage: Identifiable, Hashable {
     let body: String
     let date: Date
     let type: Int // Android's: 1 received, 2 sent, 4 sending, 5 failed, 6 queued
+    var read: Bool
     var mine: Bool { type != 1 }
     var failed: Bool { type == 5 }
 
@@ -23,6 +25,7 @@ struct TextMessage: Identifiable, Hashable {
         body = m["body"] as? String ?? ""
         self.date = Date(timeIntervalSince1970: date / 1000)
         type = (m["type"] as? NSNumber)?.intValue ?? 1
+        read = m["read"] as? Bool ?? true
     }
 }
 
@@ -30,27 +33,60 @@ struct Conversation: Identifiable {
     let id: Int64
     let messages: [TextMessage] // oldest first
     var last: TextMessage { messages[messages.count - 1] }
-    var title: String { messages.lazy.compactMap(\.name).first ?? last.address }
+    var address: String { last.address }
+    var title: String { messages.lazy.compactMap(\.name).first ?? address }
+    var unread: Int { messages.filter { !$0.mine && !$0.read }.count }
 }
 
-/// The phone's texts, kept in memory (the phone is the source of truth; they re-sync on every connect).
+/// Changes only the phone's SMS app may make; applied together in one approval on the phone.
+struct PhoneBatch: Codable, Equatable {
+    var delete: Set<Int64> = []
+    var read: Set<Int64> = []
+    var block: Set<String> = []
+    var unblock: Set<String> = []
+    var isEmpty: Bool { delete.isEmpty && read.isEmpty && block.isEmpty && unblock.isEmpty }
+
+    var summary: String {
+        func n(_ count: Int, _ one: String, _ many: String) -> String? { count == 0 ? nil : "\(count) \(count == 1 ? one : many)" }
+        return [n(delete.count, "text to delete", "texts to delete"), n(read.count, "text to mark read", "texts to mark read"),
+                n(block.count, "number to block", "numbers to block"), n(unblock.count, "number to unblock", "numbers to unblock")]
+            .compactMap { $0 }.joined(separator: ", ")
+    }
+}
+
+/// The phone's texts on the Mac. Texts stay in memory and re-sync on every connect (the phone is the source of truth);
+/// the block list and pending changes are saved, since the phone only reports its block list after a batch.
 final class Texts: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
     static let shared = Texts()
 
     @Published private(set) var conversations: [Conversation] = []
+    @Published private(set) var blocked: [String] = []
+    @Published private(set) var pending = PhoneBatch()
+    @Published private(set) var waitingForPhone = false
     @Published private(set) var problem: String?
     @Published var selected: Int64?
     private var all: [Int64: TextMessage] = [:]
     private var synced = false
+    private let store = UserDefaults.standard
+
+    override init() {
+        super.init()
+        blocked = store.stringArray(forKey: "blocked") ?? []
+        if let d = store.data(forKey: "pendingBatch"), let b = try? JSONDecoder().decode(PhoneBatch.self, from: d) { pending = b }
+    }
 
     func setUp() {
         let center = UNUserNotificationCenter.current()
         center.delegate = self
         let reply = UNTextInputNotificationAction(identifier: "reply", title: "Reply", options: [],
                                                   textInputButtonTitle: "Send", textInputPlaceholder: "Text message")
-        center.setNotificationCategories([UNNotificationCategory(identifier: "text", actions: [reply], intentIdentifiers: [])])
-        center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        let read = UNNotificationAction(identifier: "read", title: "Mark as Read")
+        let delete = UNNotificationAction(identifier: "delete", title: "Delete", options: [.destructive])
+        center.setNotificationCategories([UNNotificationCategory(identifier: "text", actions: [reply, read, delete], intentIdentifiers: [])])
+        center.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }
+
+    // MARK: From the phone
 
     /// Phone → Mac messages whose type starts with "sms.". Main thread.
     func receive(_ m: [String: Any]) {
@@ -62,14 +98,27 @@ final class Texts: NSObject, ObservableObject, UNUserNotificationCenterDelegate 
             problem = nil
         case "sms.new":
             let fresh = add(m["messages"])
-            if synced { fresh.filter { !$0.mine }.forEach(notify) }
+            if synced { fresh.filter { !$0.mine && !isBlocked($0.address) }.forEach(notify) }
         case "sms.sent":
             if m["ok"] as? Bool == false { problem = "A text didn't send. Check the phone's signal and try again." }
+        case "sms.read.done":
+            // No Samsung notification to press (it was already gone): mark read with the next batch instead.
+            if m["ok"] as? Bool == false { update { $0.read.formUnion(ids(m["ids"])) } }
+        case "sms.batch.done":
+            let deleted = Set(ids(m["deleted"]))
+            for id in deleted { all[id] = nil }
+            blocked = (m["blocked"] as? [String] ?? []).sorted()
+            store.set(blocked, forKey: "blocked")
+            update { $0 = PhoneBatch() }
+            waitingForPhone = false
+            rebuild()
         case "sms.error":
             problem = m["error"] as? String
         default: break
         }
     }
+
+    // MARK: Actions
 
     func send(to address: String, body: String) {
         let body = body.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -79,35 +128,136 @@ final class Texts: NSObject, ObservableObject, UNUserNotificationCenterDelegate 
         }
     }
 
+    func markRead(_ c: Conversation) {
+        let unread = c.messages.filter { !$0.mine && !$0.read }.map(\.id)
+        guard !unread.isEmpty else { return }
+        for id in unread { all[id]?.read = true }
+        rebuild()
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: unread.map { "text-\($0)" })
+        if !Hub.shared.sendToPhone(["t": "sms.read", "address": c.address, "name": c.title, "ids": unread]) {
+            update { $0.read.formUnion(unread) }
+        }
+    }
+
+    /// Hidden on the Mac now; deleted on the phone with the next batch.
+    func delete(_ ids: [Int64]) {
+        for id in ids { all[id] = nil }
+        update { $0.delete.formUnion(ids); $0.read.subtract(ids) }
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ids.map { "text-\($0)" })
+        rebuild()
+    }
+
+    func block(_ addresses: [String]) {
+        let fresh = addresses.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty && !isBlocked($0) }
+        guard !fresh.isEmpty else { return }
+        blocked = (blocked + fresh).sorted()
+        store.set(blocked, forKey: "blocked")
+        update { $0.block.formUnion(fresh); $0.unblock.subtract(fresh) }
+        rebuild()
+    }
+
+    func unblock(_ address: String) {
+        blocked.removeAll { $0 == address }
+        store.set(blocked, forKey: "blocked")
+        update { if $0.block.remove(address) == nil { $0.unblock.insert(address) } }
+        rebuild()
+    }
+
+    /// Sends the batch; the phone asks you to approve it, since only its SMS app may change texts.
+    func applyOnPhone() {
+        guard !pending.isEmpty else { return }
+        let message: [String: Any] = ["t": "sms.batch", "id": UUID().uuidString,
+                                      "delete": Array(pending.delete), "read": Array(pending.read),
+                                      "block": Array(pending.block), "unblock": Array(pending.unblock)]
+        if Hub.shared.sendToPhone(message) { waitingForPhone = true }
+        else { problem = "Your phone isn't connected. The changes are kept until it is." }
+    }
+
+    func exportBlocked() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "Blocked numbers.csv"
+        panel.allowedContentTypes = [.commaSeparatedText]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let names = Dictionary(conversations.map { (key($0.address), $0.title) }, uniquingKeysWith: { a, _ in a })
+        let rows = blocked.map { n in [n, names[key(n)].flatMap { $0 == n ? nil : $0 } ?? ""].map(csv).joined(separator: ",") }
+        do { try (["number,name"] + rows).joined(separator: "\n").appending("\n").write(to: url, atomically: true, encoding: .utf8) }
+        catch { problem = "Couldn't save the file: \(error.localizedDescription)" }
+    }
+
+    func dismissProblem() { problem = nil }
+
+    /// Senders worth asking the AI about: they texted you, you never wrote back, and they aren't blocked yet.
+    func adCandidates() -> [(address: String, title: String, samples: [String])] {
+        conversations.filter { c in !c.messages.contains(where: \.mine) }
+            .map { c in (c.address, c.title, c.messages.reversed().filter { !$0.mine }.prefix(3).map(\.body)) }
+    }
+
+    // MARK: Helpers
+
+    /// Phone numbers match on their last 10 digits (+98912… and 0912… are the same); sender names match as text.
+    func key(_ address: String) -> String {
+        let digits = address.filter(\.isNumber)
+        return digits.count >= 7 && digits.count >= address.filter { !$0.isWhitespace }.count - 1
+            ? String(digits.suffix(10)) : address.lowercased().trimmingCharacters(in: .whitespaces)
+    }
+
+    func isBlocked(_ address: String) -> Bool { let k = key(address); return blocked.contains { key($0) == k } }
+
+    private func csv(_ s: String) -> String { s.contains(where: { ",\"\n".contains($0) }) ? "\"\(s.replacingOccurrences(of: "\"", with: "\"\""))\"" : s }
+
+    private func ids(_ any: Any?) -> [Int64] { (any as? [NSNumber] ?? []).map(\.int64Value) }
+
+    private func update(_ change: (inout PhoneBatch) -> Void) {
+        change(&pending)
+        if let d = try? JSONEncoder().encode(pending) { store.set(d, forKey: "pendingBatch") }
+    }
+
     @discardableResult
     private func add(_ list: Any?) -> [TextMessage] {
         let fresh = (list as? [[String: Any]] ?? []).compactMap(TextMessage.init)
+            .filter { !pending.delete.contains($0.id) }
+            .map { t in var t = t; if pending.read.contains(t.id) { t.read = true }; return t }
         for t in fresh { all[t.id] = t }
-        conversations = Dictionary(grouping: all.values, by: \.thread)
-            .map { Conversation(id: $0.key, messages: $0.value.sorted { ($0.date, $0.id) < ($1.date, $1.id) }) }
-            .sorted { $0.last.date > $1.last.date }
+        rebuild()
         return fresh
     }
+
+    /// Blocked senders stay out of the list; they're in Blocked Numbers.
+    private func rebuild() {
+        conversations = Dictionary(grouping: all.values.filter { !isBlocked($0.address) }, by: \.thread)
+            .map { Conversation(id: $0.key, messages: $0.value.sorted { ($0.date, $0.id) < ($1.date, $1.id) }) }
+            .sorted { $0.last.date > $1.last.date }
+    }
+
+    // MARK: Notifications
 
     private func notify(_ t: TextMessage) {
         let content = UNMutableNotificationContent()
         content.title = t.name ?? t.address
+        if t.name != nil { content.subtitle = t.address }
         content.body = t.body
         content.sound = .default
         content.categoryIdentifier = "text"
         content.threadIdentifier = String(t.thread)
-        content.userInfo = ["address": t.address, "thread": t.thread]
+        content.userInfo = ["id": t.id, "thread": t.thread]
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "text-\(t.id)", content: content, trigger: nil))
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         let info = response.notification.request.content.userInfo
-        let address = info["address"] as? String ?? ""
+        let id = (info["id"] as? NSNumber)?.int64Value ?? -1
         let thread = (info["thread"] as? NSNumber)?.int64Value
         await MainActor.run {
-            if let reply = response as? UNTextInputNotificationResponse {
-                send(to: address, body: reply.userText)
-            } else {
+            let c = conversations.first { $0.id == thread }
+            switch response.actionIdentifier {
+            case "reply":
+                if let c, let reply = response as? UNTextInputNotificationResponse {
+                    send(to: c.address, body: reply.userText)
+                    markRead(c)
+                }
+            case "read": if let c { markRead(c) }
+            case "delete": delete([id])
+            default:
                 selected = thread
                 MessagesWindow.show()
             }
@@ -127,7 +277,9 @@ enum MessagesWindow {
         if window == nil {
             let w = NSWindow(contentViewController: NSHostingController(rootView: MessagesView(texts: .shared)))
             w.title = "Messages"
-            w.setContentSize(NSSize(width: 760, height: 540))
+            w.toolbarStyle = .unified
+            w.setContentSize(NSSize(width: 860, height: 600))
+            w.setFrameAutosaveName("Messages")
             w.isReleasedWhenClosed = false
             w.center()
             window = w

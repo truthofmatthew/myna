@@ -1,0 +1,130 @@
+import SwiftUI
+
+/// Asks a model which senders are advertising, then lets you review and block them in bulk.
+struct AdCheckView: View {
+    @ObservedObject var texts: Texts
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("aiProvider") private var providerName = AIProvider.ollama.rawValue
+    @AppStorage("aiModel") private var model = ""
+    @State private var key = ""
+    @State private var models: [String] = []
+    @State private var running = false
+    @State private var checked = 0
+    @State private var total = 0
+    @State private var error: String?
+    @State private var verdicts: [AdVerdict] = []
+    @State private var chosen: Set<String> = []
+
+    private var provider: AIProvider { AIProvider(rawValue: providerName) ?? .ollama }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Find Ads").font(.title2.weight(.semibold))
+            Form {
+                Picker("Check with", selection: $providerName) {
+                    ForEach(AIProvider.allCases) { Text($0.rawValue).tag($0.rawValue) }
+                }
+                if !provider.isLocal {
+                    HStack {
+                        SecureField("API key", text: $key)
+                        if let page = provider.keysPage { Link("Get a key", destination: page) }
+                    }
+                }
+                Picker("Model", selection: $model) {
+                    if models.isEmpty { Text(model.isEmpty ? "None found yet" : model).tag(model) }
+                    ForEach(models, id: \.self) { Text($0).tag($0) }
+                }
+            }
+            .formStyle(.grouped)
+            .frame(height: provider.isLocal ? 110 : 150)
+
+            Text(provider.isLocal
+                 ? "Runs on this Mac. Your texts don't leave it."
+                 : "The last few texts from each sender you never replied to are sent to \(provider == .claude ? "Anthropic" : "OpenAI"). Personal conversations aren't sent.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            if running {
+                ProgressView(value: Double(checked), total: Double(max(total, 1))) {
+                    Text("Checked \(checked) of \(total) senders…")
+                }
+            } else if let error {
+                Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+            }
+
+            if !verdicts.isEmpty {
+                List {
+                    ForEach(verdicts) { v in
+                        Toggle(isOn: Binding(get: { chosen.contains(v.address) },
+                                             set: { if $0 { chosen.insert(v.address) } else { chosen.remove(v.address) } })) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack {
+                                    Text(v.title).font(.body.weight(.semibold))
+                                    Spacer()
+                                    Text(v.isAd ? "Ad · \(Int(v.confidence * 100))%" : "Not an ad")
+                                        .font(.caption.weight(.semibold).monospacedDigit())
+                                        .foregroundStyle(v.isAd && v.confidence >= 0.8 ? .red : .secondary)
+                                }
+                                Text(v.sample).font(.callout).foregroundStyle(.secondary).lineLimit(2)
+                                    .frame(maxWidth: .infinity, alignment: v.sample.isRightToLeft ? .trailing : .leading)
+                                if !v.reason.isEmpty { Text(v.reason).font(.caption).foregroundStyle(.tertiary) }
+                            }
+                        }
+                    }
+                }
+                .frame(minHeight: 280)
+            }
+
+            HStack {
+                Button(verdicts.isEmpty ? "Check Texts" : "Check Again", action: check)
+                    .disabled(running || model.isEmpty || (!provider.isLocal && key.isEmpty))
+                Spacer()
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Block \(chosen.count) Sender\(chosen.count == 1 ? "" : "s")") {
+                    texts.block(Array(chosen))
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(chosen.isEmpty)
+            }
+        }
+        .padding(20)
+        .frame(width: 560)
+        .task(id: providerName) { await loadModels() }
+    }
+
+    private func loadModels() async {
+        key = provider.key
+        models = []
+        error = nil
+        do {
+            models = try await AIClient(provider: provider, model: "").models()
+            if !models.contains(model) { model = AIClient.suggested(models, for: provider) ?? "" }
+        } catch {
+            if provider.isLocal || !key.isEmpty { self.error = error.localizedDescription }
+        }
+    }
+
+    private func check() {
+        if !provider.isLocal { provider.key = key }
+        let senders = texts.adCandidates()
+        guard !senders.isEmpty else { error = "No senders to check: everyone who texts you is either blocked or someone you've replied to."; return }
+        running = true
+        error = nil
+        checked = 0
+        total = senders.count
+        Task {
+            do {
+                if models.isEmpty { await loadModels() }
+                let result = try await AdCheck.run(senders, client: AIClient(provider: provider, model: model)) { n in
+                    Task { @MainActor in checked = n }
+                }
+                verdicts = result.sorted { ($0.isAd ? $0.confidence : -1 + $0.confidence) > ($1.isAd ? $1.confidence : -1 + $1.confidence) }
+                chosen = Set(verdicts.filter { $0.isAd && $0.confidence >= 0.8 }.map(\.address))
+            } catch {
+                self.error = error.localizedDescription
+            }
+            running = false
+        }
+    }
+}

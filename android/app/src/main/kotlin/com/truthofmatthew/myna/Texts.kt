@@ -62,6 +62,15 @@ class Texts(private val context: Context, private val send: (JSONObject) -> Unit
         when (message.optString("t")) {
             "sms.sync" -> send(JSONObject().put("t", "sms.list").put("messages", JSONArray(query("1=1", emptyArray(), SYNC_LIMIT))))
             "sms.send" -> sendText(message.optString("to"), message.optString("body"), message.optString("ref"))
+            "sms.read" -> {
+                // Prefer Samsung's own "Mark as read" button; otherwise the Mac adds it to a batch.
+                val done = Notifications.active?.markRead(message.optString("address"), message.optString("name").ifEmpty { null }) == true
+                send(JSONObject().put("t", "sms.read.done").put("ids", message.optJSONArray("ids")).put("ok", done))
+            }
+            "sms.batch" -> {
+                Batch.save(context, message.toString())
+                Batch.notify(context, BatchActivity.summary(message))
+            }
         }
     }
 

@@ -65,6 +65,7 @@ class LinkService : Service() {
                 val socket = wifi.socketFactory.createSocket().apply { connect(address, 5000); soTimeout = 30_000; tcpNoDelay = true }
                 Link(socket, pairing.key).use { l ->
                     link = l
+                    active = l
                     l.sendMessage(JSONObject().put("t", "hello").put("name", deviceName()).put("app", 1))
                     texts = Texts(this) { runCatching { l.sendMessage(it) } }.also { it.start() }
                     setStatus("Connected to ${pairing.name}")
@@ -77,6 +78,7 @@ class LinkService : Service() {
                 Log.i(TAG, "connection ended: $e")
             } finally {
                 link = null
+                active = null
                 texts?.stop(); texts = null
                 stopMedia()
             }
@@ -167,6 +169,10 @@ class LinkService : Service() {
         private const val CHANNEL = "link"
         private const val ACTION_STOP = "stop"
         @Volatile var status = "Stopped"
+        @Volatile private var active: Link? = null
+
+        /** For parts of the app outside the connection loop; dropped if the Mac isn't connected. */
+        fun sendToMac(message: JSONObject) { runCatching { active?.sendMessage(message) } }
 
         fun start(context: Context) = context.startForegroundService(Intent(context, LinkService::class.java))
         fun stop(context: Context) = context.stopService(Intent(context, LinkService::class.java))
