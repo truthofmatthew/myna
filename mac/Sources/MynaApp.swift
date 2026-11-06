@@ -7,7 +7,11 @@ struct MynaApp: App {
     @StateObject private var hub = Hub.shared
 
     init() {
-        if Demo.on { Texts.shared.receive(["t": "sms.list", "messages": Demo.texts()]); return }
+        if Demo.on {
+            Texts.shared.receive(["t": "sms.list", "messages": Demo.texts()])
+            if Demo.scene == "loading" { Texts.shared.demoLoading() }
+            return
+        }
         Texts.shared.setUp()
         Hub.shared.start()
     }
@@ -58,7 +62,7 @@ private struct MenuIcon: View {
                 MessagesWindow.open = { openWindow(id: "messages") }
                 if Demo.on {
                     Texts.shared.selection = [1]
-                    openWindow(id: ["about": "about", "pair": "pair"][Demo.scene] ?? "messages")
+                    openWindow(id: ["about": "about", "pair": "pair", "settings": "settings"][Demo.scene] ?? "messages")
                     NSApp.activate()
                 }
             }

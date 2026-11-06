@@ -11,9 +11,11 @@ It's a menu-bar app for the Mac and a small app for the phone, talking over your
 ## What it does
 
 - **Texts.** Your conversations in a Messages window, with contact names, search and right-to-left Persian and Arabic. Send from the Mac. New texts show a notification with **Reply**, **Mark as Read** and **Delete**.
+- **Your whole history.** Myna loads every text on the phone (tested with 40,000), or only the newest 1,000, 5,000 or 20,000 if you pick that in Settings. A bar shows how far it has got. After the first load, a reconnect only fetches what changed, in a few seconds.
 - **Clean up in bulk.** ⌘-click, ⇧-click or ⌘A to pick conversations, then mark them read, block the senders or delete them.
 - **Blocked numbers.** Block from a conversation or the Blocked Numbers list, unblock, and export the list as CSV. Blocked senders stay out of Messages and don't notify.
-- **Find Ads.** Ollama or LM Studio on your Mac, or ChatGPT or Claude with your own key, sorts senders into advertising or not. You see each one with a confidence and a reason, and block the ones you pick.
+- **Find Ads.** Ollama or LM Studio on your Mac, or ChatGPT or Claude with your own key, sorts the senders you've never replied to into advertising or not. You see each one with a confidence and a reason, and block the ones you pick.
+- **Settings** (Myna menu › **Settings…**): how many texts to load, which AI Find Ads uses with its key and model, speakerphone for calls, and Open at Login. API keys go in the Keychain.
 - **Calls.** An incoming call shows on the Mac with **Answer** and **Decline**; hang up from the menu; call anyone from a conversation's phone button. The phone switches to its loudspeaker, so it can stay on the desk.
 - **Camera and mic in Google Meet.** The Chrome (or Edge) extension adds **Myna Front Camera**, **Myna Back Camera** and **Myna Mic** to Meet's device list. The picture turns upright as you rotate the phone.
 
@@ -21,10 +23,11 @@ It's a menu-bar app for the Mac and a small app for the phone, talking over your
 
 | | |
 | --- | --- |
-| <img src="docs/screenshots/ads.png" alt="Find Ads: two senders marked as ads at 97% and 93% and checked, a delivery notice and a bank alert marked not an ad"> | <img src="docs/screenshots/blocked.png" alt="Blocked Numbers: a list of blocked senders with Unblock buttons, a field to block a number, and Export CSV"> |
+| <img src="docs/screenshots/ads.png" alt="Find Ads: it uses Ollama with llama3.2 on the Mac; two senders are marked as ads at 97% and 93% and checked, a delivery notice and a bank alert are marked not an ad, and the main button reads Block 2 Senders"> | <img src="docs/screenshots/blocked.png" alt="Blocked Numbers: a list of blocked senders with Unblock buttons, a field to block a number, and Export CSV"> |
+| <img src="docs/screenshots/settings.png" width="360" alt="Myna Settings: Texts to load set to All texts, Find Ads using Ollama with llama3.2, and toggles for speakerphone and Open at login"> | <img src="docs/screenshots/loading.png" alt="Messages while loading: a bar at the bottom reads Loading texts from your phone: 12,000 of 40,708"> |
 | <img src="docs/screenshots/pair.png" width="320" alt="Pair Phone: a QR code to scan with the phone's camera"> | <img src="docs/screenshots/about.png" width="360" alt="About Myna: the icon, version, and links to GitHub and truthofmatthew.com"> |
 
-The screenshots use made-up texts: run the Mac app with `-demo messages` (or `ads`, `blocked`, `about`, `pair`) to see them.
+The screenshots use made-up texts: run the Mac app with `-demo messages` (or `loading`, `ads`, `blocked`, `settings`, `about`, `pair`) to see them.
 
 ## How it works
 
@@ -51,6 +54,7 @@ You need Xcode 16 or later, [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`
 2. In `android/`, run `./gradlew assembleDebug`, then `adb install app/build/outputs/apk/debug/app-debug.apk`.
 3. For calls on speaker, allow Myna to manage ongoing calls once: `adb shell appops set com.truthofmatthew.myna MANAGE_ONGOING_CALLS allow`.
 4. On the Mac, Myna menu › **Pair Phone…**, and scan the code with the phone's camera. Allow what Myna asks for. Texts and calls are optional; the webcam works without them.
+5. Install with `adb install --user 0 …` on Samsung phones that use Dual Apps or a Secure Folder, or a second copy of Myna appears there.
 
 **Chrome or Edge**
 
@@ -63,11 +67,12 @@ Open `chrome://extensions` (or `edge://extensions`), turn on Developer mode, cho
 - **No picture messages (MMS)** yet.
 - **The camera is for Chrome-based browsers.** Zoom, FaceTime and Safari don't see it; a system-wide camera would need a paid Apple developer account.
 - **After the phone restarts,** open Myna once; Android doesn't let camera and mic services start at boot.
+- **The menu bar icon can be hidden** when the menu bar is full (behind the notch). Open Myna from Spotlight or Finder and its Messages window comes up.
 - Tested on a Galaxy S24 FE with Android 17 (One UI 9) and macOS 27.
 
 ## Your data
 
-Texts, call details, camera and mic go only between your phone and your Mac, encrypted. The Mac keeps texts in memory and the block list in its preferences; the pairing key is in the Keychain on the Mac and in Myna's private storage on the phone. The one exception is Find Ads with ChatGPT or Claude: the last few texts from senders you never replied to go to that provider, and only when you press **Check Texts**. With Ollama or LM Studio, nothing leaves your Mac.
+Texts, call details, camera and mic go only between your phone and your Mac, encrypted. The Mac keeps texts in memory and the block list in its preferences; the pairing key is in the Keychain on the Mac and in Myna's private storage on the phone. The one exception is Find Ads with ChatGPT or Claude: the last three texts from each sender you never replied to go to that provider, and only when you press **Check Senders**. With Ollama or LM Studio, nothing leaves your Mac.
 
 ## License
 

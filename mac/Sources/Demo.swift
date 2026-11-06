@@ -5,7 +5,7 @@ import Foundation
 enum Demo {
     static let on = CommandLine.arguments.contains("-demo")
 
-    /// What to show for the screenshot: `-demo messages|ads|blocked|about|pair`.
+    /// What to show for the screenshot: `-demo messages|loading|ads|blocked|settings|about|pair`.
     static var scene: String {
         let a = CommandLine.arguments
         return a.firstIndex(of: "-demo").flatMap { a.indices.contains($0 + 1) ? a[$0 + 1] : nil } ?? "messages"

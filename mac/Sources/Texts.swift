@@ -147,6 +147,9 @@ final class Texts: NSObject, ObservableObject, UNUserNotificationCenterDelegate 
 
     // MARK: Actions
 
+    /// Demo only: a load part way through, for the screenshot.
+    func demoLoading() { loaded = 12_000; toLoad = 40_708 }
+
     /// How many of the newest texts to load, set in Settings; 0 loads them all.
     static let limitKey = "textsToLoad"
 
