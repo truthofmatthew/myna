@@ -1,6 +1,6 @@
 # Myna protocol, version 1
 
-The Mac app listens; the phone connects to it. Everything after the 16-byte handshake is encrypted.
+The Mac app listens; the phone connects to it. Everything after the handshake (32 bytes from the phone, 16 back) is encrypted.
 
 ## Pairing
 
@@ -15,7 +15,7 @@ myna://pair?id=<mac id>&n=<mac name>&h=<ip>&p=<port>&k=<key>
 - `h`, `p`: the Mac's current IP address and port, a fallback when Bonjour doesn't find it.
 - `k`: a random 32-byte pairing key, base64url without padding. The Mac keeps it in the Keychain; the phone keeps it in its private app storage.
 
-The phone's camera app opens the link, and the Myna app saves the pairing. Showing a new QR code (Pair again) makes a new key, so old phones stop working.
+The phone's camera app opens the link, and the Myna app saves the pairing. Pair Phone shows the current key. **Make a new code** makes a new key, so phones paired before stop working.
 
 ## Finding the Mac
 
@@ -72,12 +72,12 @@ Mac → phone:
 - `{"t":"sms.sync","limit":0,"since":0}`: send the newest `limit` texts (0 for all). The Mac sends this after every `hello`. With `since`, the Mac already has every text up to that id (SMS ids only grow): the phone answers with `sms.state`, then only the newer texts as `sms.more` pages.
 - `{"t":"sms.send","to":"+989121234567","body":"…","ref":"<uuid>"}`: send a text from the phone's default SMS SIM.
 - `{"t":"sms.read","address":"…","name":"…","ids":[…]}`: mark a conversation read by pressing "Mark as read" on Samsung Messages' notification for it (needs Notification access on the phone).
-- `{"t":"sms.batch","id":"<uuid>","delete":[ids],"read":[ids],"block":["…"],"unblock":["…"]}`: changes only the SMS app may make. The phone saves the batch and shows a notification; when you tap it, Myna takes the SMS role, applies the batch, and opens Samsung Messages so it can take the role back. An empty batch just reads the phone's block list.
+- `{"t":"sms.batch","id":"<uuid>","delete":[ids],"read":[ids],"block":["…"],"unblock":["…"]}`: changes only the SMS app may make. The phone saves the batch and shows a notification; when you tap it, Myna takes the SMS role, applies the batch, and opens Default apps so you can pick your SMS app again (an app can't hand the role back itself). An empty batch just reads the phone's block list.
 
 Phone → Mac:
 
-- `{"t":"sms.list","messages":[…]}`: answer to `sms.sync`: the newest 1,000 texts, newest first. It replaces the Mac's list.
-- `{"t":"sms.more","messages":[…]}`: the rest of the history after `sms.list`, 1,000 texts per message, newest first. The Mac adds these without notifying.
+- `{"t":"sms.list","messages":[…],"total":40708,"done":false}`: answer to `sms.sync`: the newest 1,000 texts, newest first. It replaces the Mac's list.
+- `{"t":"sms.more","messages":[…],"total":40708,"done":false}`: the rest of the history after `sms.list`, 1,000 texts per message, newest first. The Mac adds these without notifying. `total` is how many texts the phone will send in all; `done` is true on the last page.
 - `{"t":"sms.state","ids":[…],"unread":[…],"new":12}`: answer to `sms.sync` with `since`: the ids of the newest `limit` texts still on the phone, which received ones are unread, and how many newer texts follow. The Mac drops texts not in `ids`.
 - `{"t":"sms.new","messages":[…]}`: messages that appeared since the last list, received or sent (including ones typed on the phone).
 - `{"t":"sms.sent","ref":"<uuid>","ok":true}`: the carrier accepted (or refused) a text the Mac asked to send.
@@ -95,14 +95,15 @@ Phone → Mac:
 
 Mac → phone:
 
-- `{"t":"call.answer"}`: answer the ringing call.
+- `{"t":"call.answer","speaker":true}`: answer the ringing call; with `speaker`, switch to the loudspeaker once it's connected.
 - `{"t":"call.end"}`: decline a ringing call, or hang up.
-- `{"t":"call.dial","number":"+98912…"}`: place a call from the phone's default SIM.
+- `{"t":"call.dial","number":"+98912…","speaker":true}`: place a call from the phone's default SIM; `speaker` as above.
+- `{"t":"call.speaker","on":false}` (phone → Mac): whether the switch to the loudspeaker worked.
 - `{"t":"call.error","error":"…"}` (phone → Mac): a call permission is missing, or Android refused.
 
 ## Mac to Chrome
 
-The Mac app serves the streams on `http://127.0.0.1:8737` for the Chrome extension:
+The Mac app serves the streams on `http://127.0.0.1:8737` for the Chrome extension. It answers `403` to anything a web page could send: a `Host` other than `127.0.0.1:8737` or `localhost:8737`, an `Origin` that isn't `chrome-extension://…`, or a `Sec-Fetch-Site` other than `none`. The extension's own fetches carry no `Origin` and `Sec-Fetch-Site: none`.
 
 - `GET /video?camera=front|back`
 - `GET /audio`

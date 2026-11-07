@@ -1,7 +1,6 @@
 // Adds the phone's cameras and mic to the page's device list and serves them from the Myna bridge.
 // Runs in the page's own world so Meet sees the patched navigator.mediaDevices.
 (() => {
-  const BRIDGE = 'http://127.0.0.1:8737';
   const GROUP = 'myna-phone';
   const DEVICES = {
     'myna-camera-front': { kind: 'videoinput', label: 'Myna Front Camera (phone)', path: '/video?camera=front' },
@@ -103,16 +102,9 @@
     return s;
   }
 
-  // On Meet the bytes come through the extension's relay frame (host.js, relay.js), which fetches
-  // with the extension's own permission. The local test page has no extension, so it fetches directly.
+  // The bytes come through the extension's relay frame (host.js, relay.js), which fetches with the
+  // extension's own permission; the Mac app turns web pages away.
   function openBridge(path, signal) {
-    if (location.origin === 'http://127.0.0.1:8740' || location.origin === BRIDGE) {
-      const reader = fetch(BRIDGE + path, { cache: 'no-store', signal }).then((res) => {
-        if (!res.ok) throw new Error(`Myna on the Mac answered ${res.status}`);
-        return res.body.getReader();
-      });
-      return { read: () => reader.then((r) => r.read()) };
-    }
     const { port1, port2 } = new MessageChannel();
     const queue = [];
     let ended = false, failure = null, wake = null;

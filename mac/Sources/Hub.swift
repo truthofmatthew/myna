@@ -141,26 +141,44 @@ final class Hub: ObservableObject {
                   let line = request.split(separator: "\r\n").first else { return connection.cancel() }
             let parts = line.split(separator: " ")
             guard parts.count >= 2, let url = URLComponents(string: String(parts[1])) else { return connection.cancel() }
-            if parts[0] == "OPTIONS" { return self.reply(connection, "204 No Content", end: true) }
+            // Keep web pages out: only the extension (whose fetches Chromium sends with no Origin and
+            // Sec-Fetch-Site "none") or a local program may open the phone's camera and mic. The Host
+            // check stops DNS rebinding to 127.0.0.1.
+            let headers = Self.headers(request), origin = headers["origin"]
+            guard ["127.0.0.1:8737", "localhost:8737"].contains(headers["host"] ?? ""),
+                  origin == nil || origin!.hasPrefix("chrome-extension://"),
+                  headers["sec-fetch-site"].map({ $0 == "none" }) ?? true else {
+                return self.reply(connection, "403 Forbidden", end: true)
+            }
+            if parts[0] == "OPTIONS" { return self.reply(connection, "204 No Content", origin: origin, end: true) }
             switch url.path {
-            case "/video": self.addVideoViewer(connection, camera: url.queryItems?.first { $0.name == "camera" }?.value ?? "front")
-            case "/audio": self.addAudioViewer(connection)
+            case "/video": self.addVideoViewer(connection, origin: origin, camera: url.queryItems?.first { $0.name == "camera" }?.value ?? "front")
+            case "/audio": self.addAudioViewer(connection, origin: origin)
             default: self.reply(connection, "404 Not Found", end: true)
             }
         }
     }
 
-    private func reply(_ connection: NWConnection, _ status: String, body: String = "", end: Bool) {
-        // Meet on https calls this loopback server; Chrome needs CORS and Private Network Access headers.
-        let head = "HTTP/1.1 \(status)\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Private-Network: true\r\n"
+    private static func headers(_ request: String) -> [String: String] {
+        var out: [String: String] = [:]
+        for line in request.split(separator: "\r\n").dropFirst() {
+            guard let colon = line.firstIndex(of: ":") else { continue }
+            out[line[..<colon].lowercased()] = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+        }
+        return out
+    }
+
+    private func reply(_ connection: NWConnection, _ status: String, body: String = "", origin: String? = nil, end: Bool) {
+        let cors = origin.map { "Access-Control-Allow-Origin: \($0)\r\nAccess-Control-Allow-Private-Network: true\r\nVary: Origin\r\n" } ?? ""
+        let head = "HTTP/1.1 \(status)\r\n" + cors
             + "Content-Type: application/octet-stream\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n" + body
         connection.send(content: Data(head.utf8), completion: end ? .contentProcessed { _ in connection.cancel() } : .idempotent)
     }
 
-    private func addVideoViewer(_ connection: NWConnection, camera wanted: String) {
-        guard let phone else { return reply(connection, "503 Service Unavailable", body: "Phone not connected", end: true) }
-        guard wanted == "front" || wanted == "back" else { return reply(connection, "400 Bad Request", end: true) }
-        reply(connection, "200 OK", end: false)
+    private func addVideoViewer(_ connection: NWConnection, origin: String?, camera wanted: String) {
+        guard let phone else { return reply(connection, "503 Service Unavailable", body: "Phone not connected", origin: origin, end: true) }
+        guard wanted == "front" || wanted == "back" else { return reply(connection, "400 Bad Request", origin: origin, end: true) }
+        reply(connection, "200 OK", origin: origin, end: false)
         connection.send(content: Data("h264".utf8), completion: .idempotent)
         let viewer = Viewer(connection)
         if wanted != camera || videoViewers.isEmpty {
@@ -183,9 +201,9 @@ final class Hub: ObservableObject {
         publish { $0.cameraInUse = true }
     }
 
-    private func addAudioViewer(_ connection: NWConnection) {
-        guard let phone else { return reply(connection, "503 Service Unavailable", body: "Phone not connected", end: true) }
-        reply(connection, "200 OK", end: false)
+    private func addAudioViewer(_ connection: NWConnection, origin: String?) {
+        guard let phone else { return reply(connection, "503 Service Unavailable", body: "Phone not connected", origin: origin, end: true) }
+        reply(connection, "200 OK", origin: origin, end: false)
         connection.send(content: Data("opus".utf8), completion: .idempotent)
         let viewer = Viewer(connection)
         if audioViewers.isEmpty { phone.send(message: ["t": "mic", "on": true]) }

@@ -16,7 +16,7 @@ It's a menu-bar app for the Mac and a small app for the phone, talking over your
 - **Blocked numbers.** Block from a conversation or the Blocked Numbers list, unblock, and export the list as CSV. Blocked senders stay out of Messages and don't notify.
 - **Find Ads.** Ollama or LM Studio on your Mac, or ChatGPT or Claude with your own key, sorts the senders you've never replied to into advertising or not. You see each one with a confidence and a reason, and block the ones you pick.
 - **Settings** (Myna menu › **Settings…**): how many texts to load, which AI Find Ads uses with its key and model, speakerphone for calls, and Open at Login. API keys go in the Keychain.
-- **Calls.** An incoming call shows on the Mac with **Answer** and **Decline**; hang up from the menu; call anyone from a conversation's phone button. The phone switches to its loudspeaker, so it can stay on the desk.
+- **Calls.** An incoming call shows on the Mac with **Answer** and **Decline**; hang up from the menu; call anyone from a conversation's phone button. For calls you answer or place from the Mac, the phone switches to its loudspeaker, so it can stay on the desk (after a one-time `adb` step; see For developers).
 - **Camera and mic in Google Meet.** The Chrome (or Edge) extension adds **Myna Front Camera**, **Myna Back Camera** and **Myna Mic** to Meet's device list. The picture turns upright as you rotate the phone.
 
 ## Screenshots
@@ -34,7 +34,7 @@ The screenshots use made-up texts: run the Mac app with `-demo messages` (or `lo
 - **Pairing.** The Mac shows a QR code; the phone's camera opens Myna with it. The code carries a random key that never leaves the two devices.
 - **The connection.** The phone finds the Mac over Bonjour (or looks for it on its own hotspot), and every message is encrypted with AES-256-GCM using keys derived from the pairing key. The wire format is in [docs/PROTOCOL.md](docs/PROTOCOL.md).
 - **Texts** come from the phone's SMS store; Samsung Messages (or whichever app is your SMS app) keeps writing to it as usual. Myna reads and sends; it doesn't replace your SMS app.
-- **Delete, mark read and block on the phone** are things only the SMS app may do. Myna collects them into one batch; you tap a notification on the phone, Myna becomes the SMS app for a moment, applies the batch, and opens Default apps so you can hand the role back. Marking read usually skips all that: Myna presses "Mark as read" on the SMS app's own notification.
+- **Delete, mark read and block on the phone** are things only the SMS app may do. Myna collects them into one batch; you tap a notification on the phone, Myna becomes the SMS app for a moment, applies the batch, and opens Default apps so you can hand the role back. With Samsung Messages, marking read usually skips all that: Myna presses "Mark as read" on Samsung Messages' own notification. This needs Notification access for Myna: search for "Notification access" in the phone's Settings.
 - **Calls** go through Android's call service. You talk through the phone: macOS doesn't let apps carry Bluetooth call audio, and Android doesn't let apps capture it. The details are in [docs/SPIKES.md](docs/SPIKES.md).
 - **Camera and mic** are encoded on the phone (H.264 and Opus), passed through the Mac app on `127.0.0.1:8737`, and decoded in the browser by the extension, which offers them to Meet as devices. That's why it needs no virtual-camera driver and no paid Apple developer account.
 
@@ -51,7 +51,7 @@ Download everything from [Releases](https://github.com/truthofmatthew/myna/relea
 - Open Myna. macOS says it can't check it, because Myna isn't sold through Apple. Click **Done**, go to System Settings › Privacy & Security, scroll down and click **Open Anyway**. You only do this once.
 - A small bird appears in the menu bar at the top of the screen. That's Myna.
 
-**2. On the phone** (Android 12 or later)
+**2. On the phone** (Android 12 or later; tested on Android 17)
 
 - Open this page on the phone and download [`Myna-android.apk`](https://github.com/truthofmatthew/myna/releases/latest/download/Myna-android.apk).
 - Open the file. Android asks whether your browser may install apps; allow it, then tap **Install**.
@@ -66,9 +66,9 @@ Download everything from [Releases](https://github.com/truthofmatthew/myna/relea
 **Using it**
 
 - **Texts:** click the bird › **Messages…**. Pick a conversation and type. New texts show up as Mac notifications you can reply to.
-- **Calls:** an incoming call pops up on the Mac with Answer and Decline. To call someone, open their conversation and click the phone button. You talk through the phone's loudspeaker.
+- **Calls:** an incoming call pops up on the Mac with Answer and Decline. To call someone, open their conversation and click **Call**. You talk through the phone. To have it switch to its loudspeaker on its own, do the one-time step under For developers.
 - **Camera in Meet:** keep Myna open on the phone. In a Meet call, open settings › Video and pick **Myna Front Camera (phone)**, and under Audio pick **Myna Mic (phone)**.
-- **Ads:** in Messages, click **Find Ads**, choose an AI in Settings, then **Check Senders**. Tick the ones to block.
+- **Ads:** in Messages, click **Find Ads**, choose an AI in Settings, then **Check Senders** (the button shows how many). Tick the ones to block.
 - After the phone restarts, open Myna on it once.
 
 ### For developers
@@ -95,7 +95,7 @@ Download everything from [Releases](https://github.com/truthofmatthew/myna/relea
 
 ## Your data
 
-Texts, call details, camera and mic go only between your phone and your Mac, encrypted. The Mac keeps texts in memory and the block list in its preferences; the pairing key is in the Keychain on the Mac and in Myna's private storage on the phone. The one exception is Find Ads with ChatGPT or Claude: the last three texts from each sender you never replied to go to that provider, and only when you press **Check Senders**. With Ollama or LM Studio, nothing leaves your Mac.
+Texts, call details, camera and mic go only between your phone and your Mac, encrypted. On the Mac, the camera and mic are served on 127.0.0.1 to the browser extension; web pages are turned away. The Mac keeps texts in memory and the block list in its preferences; the pairing key is in the Keychain on the Mac and in Myna's private storage on the phone. The one exception is Find Ads with ChatGPT or Claude: each sender you never replied to goes to that provider as their number or name and their last three texts (each cut to 200 characters), and only when you press **Check Senders** or **Check Again**. With Ollama or LM Studio, nothing leaves your Mac.
 
 ## License
 

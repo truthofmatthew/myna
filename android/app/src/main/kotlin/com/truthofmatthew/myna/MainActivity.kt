@@ -72,13 +72,13 @@ class MainActivity : Activity() {
     }
 
     private fun start() {
-        val missing = (REQUIRED + OPTIONAL).filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+        val missing = (required() + OPTIONAL).filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
         if (missing.isEmpty()) LinkService.start(this) else requestPermissions(missing.toTypedArray(), 1)
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, results: IntArray) {
         // Texts are optional: without SMS access the camera and mic still work.
-        if (REQUIRED.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }) LinkService.start(this)
+        if (required().all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }) LinkService.start(this)
         else status.text = "Myna needs the camera, microphone and local network to work as your Mac's webcam."
     }
 
@@ -99,6 +99,11 @@ class MainActivity : Activity() {
         connect.visibility = android.view.View.VISIBLE
         connect.text = if (stopped) "Connect" else "Disconnect"
         forget.visibility = android.view.View.VISIBLE
+    }
+
+    // Notifications (Android 13) and local network (Android 17) don't exist on older phones, which can't grant them.
+    private fun required() = REQUIRED.filter {
+        runCatching { packageManager.getPermissionInfo(it, 0) }.isSuccess
     }
 
     companion object {

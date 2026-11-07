@@ -12,8 +12,8 @@ android {
         applicationId = "com.truthofmatthew.myna"
         minSdk = 31
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.1.1"
     }
 
     // Release signing: local.properties (not in git) holds releaseKeystoreProperties=<path to keystore.properties>.

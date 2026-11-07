@@ -176,7 +176,8 @@ class LinkService : Service() {
                 nsd.resolveService(info, object : NsdManager.ResolveListener {
                     override fun onServiceResolved(resolved: NsdServiceInfo) {
                         val id = resolved.attributes["id"]?.let { String(it) }
-                        val host = resolved.hostAddresses.firstOrNull()
+                        @Suppress("DEPRECATION") // hostAddresses needs Android 14
+                        val host = if (android.os.Build.VERSION.SDK_INT >= 34) resolved.hostAddresses.firstOrNull() else resolved.host
                         if (id == pairing.id && host != null) { result = InetSocketAddress(host, resolved.port); found.countDown() }
                     }
                     override fun onResolveFailed(info: NsdServiceInfo, errorCode: Int) = Unit

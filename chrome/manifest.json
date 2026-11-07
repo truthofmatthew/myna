@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Myna",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Use your Android phone's camera and mic in Google Meet.",
   "icons": {
     "16": "icons/icon-16.png",
