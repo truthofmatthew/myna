@@ -40,25 +40,31 @@ The screenshots use made-up texts: run the Mac app with `-demo messages` (or `lo
 
 ## Install
 
-You need Xcode 16 or later, [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`), Android Studio (for its JDK and SDK) and `adb`.
+Download the latest builds from [Releases](https://github.com/truthofmatthew/myna/releases/latest).
 
-**Mac**
+**Mac** (macOS 14 or later)
 
-1. Clone the repo.
-2. In `mac/project.yml`, set `DEVELOPMENT_TEAM` to your own Apple team ID and `PRODUCT_BUNDLE_IDENTIFIER` to your own bundle ID.
-3. Run `mac/install.sh`. It builds a Release copy, puts it in `/Applications` and opens it in the menu bar. Turn on **Open at Login** in its menu if you like.
+1. Download `Myna-mac-AppleSilicon.zip` for an M-series Mac or `Myna-mac-Intel.zip` for an Intel Mac, unzip it and drag Myna to Applications.
+2. Myna isn't notarized by Apple, so macOS blocks it the first time. Open it once, then go to System Settings › Privacy & Security and click **Open Anyway**. Or run `xattr -dr com.apple.quarantine /Applications/Myna.app`.
+3. Myna appears in the menu bar. Turn on **Open at Login** in its menu if you like.
 
 **Phone** (Android 12 or later)
 
-1. Turn on USB debugging and plug the phone in.
-2. In `android/`, run `./gradlew assembleDebug`, then `adb install app/build/outputs/apk/debug/app-debug.apk`.
-3. For calls on speaker, allow Myna to manage ongoing calls once: `adb shell appops set com.truthofmatthew.myna MANAGE_ONGOING_CALLS allow`.
-4. On the Mac, Myna menu › **Pair Phone…**, and scan the code with the phone's camera. Allow what Myna asks for. Texts and calls are optional; the webcam works without them.
-5. Install with `adb install --user 0 …` on Samsung phones that use Dual Apps or a Secure Folder, or a second copy of Myna appears there.
+1. Download `Myna-android.apk` on the phone and open it. Allow your browser or Files app to install apps when asked.
+2. On the Mac, Myna menu › **Pair Phone…**, and scan the code with the phone's camera. Allow what Myna asks for. Texts and calls are optional; the webcam works without them.
+3. For calls on speaker, allow Myna to manage ongoing calls once, from a computer with `adb`: `adb shell appops set com.truthofmatthew.myna MANAGE_ONGOING_CALLS allow`.
 
 **Chrome or Edge**
 
-Open `chrome://extensions` (or `edge://extensions`), turn on Developer mode, choose **Load unpacked** and pick the `chrome` folder. In Meet, pick **Myna Front Camera (phone)** and **Myna Mic (phone)**.
+Download `Myna-chrome-extension.zip` and unzip it. Open `chrome://extensions` (or `edge://extensions`), turn on Developer mode, choose **Load unpacked** and pick the unzipped folder. In Meet, pick **Myna Front Camera (phone)** and **Myna Mic (phone)**.
+
+### Build it yourself
+
+You need Xcode 16 or later, [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`), Android Studio (for its JDK and SDK) and `adb`.
+
+- **Mac:** in `mac/project.yml`, set `DEVELOPMENT_TEAM` to your own Apple team ID and `PRODUCT_BUNDLE_IDENTIFIER` to your own bundle ID, then run `mac/install.sh`. It builds a Release copy, puts it in `/Applications` and opens it.
+- **Phone:** turn on USB debugging and plug the phone in. In `android/`, run `./gradlew assembleDebug`, then `adb install app/build/outputs/apk/debug/app-debug.apk`. On Samsung phones that use Dual Apps or a Secure Folder, add `--user 0`, or a second copy of Myna appears there. A self-built copy and the downloaded APK are signed with different keys, so uninstall one before installing the other.
+- **Extension:** load the `chrome` folder unpacked, as above.
 
 ## Known limits
 
