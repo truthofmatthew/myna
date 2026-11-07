@@ -40,31 +40,48 @@ The screenshots use made-up texts: run the Mac app with `-demo messages` (or `lo
 
 ## Install
 
-Download the latest builds from [Releases](https://github.com/truthofmatthew/myna/releases/latest).
+Download everything from [Releases](https://github.com/truthofmatthew/myna/releases/latest). Pick the guide that fits you.
 
-**Mac** (macOS 14 or later)
+### The simple way
 
-1. Download `Myna-mac-AppleSilicon.zip` for an M-series Mac or `Myna-mac-Intel.zip` for an Intel Mac, unzip it and drag Myna to Applications.
-2. Myna isn't notarized by Apple, so macOS blocks it the first time. Open it once, then go to System Settings › Privacy & Security and click **Open Anyway**. Or run `xattr -dr com.apple.quarantine /Applications/Myna.app`.
-3. Myna appears in the menu bar. Turn on **Open at Login** in its menu if you like.
+**1. On the Mac** (macOS 14 or later)
 
-**Phone** (Android 12 or later)
+- Download [`Myna-mac-AppleSilicon.zip`](https://github.com/truthofmatthew/myna/releases/latest/download/Myna-mac-AppleSilicon.zip) if your Mac has an M1 chip or newer, or [`Myna-mac-Intel.zip`](https://github.com/truthofmatthew/myna/releases/latest/download/Myna-mac-Intel.zip) if it's older. Not sure? Apple menu › About This Mac shows "Chip: Apple M…" or "Processor: Intel".
+- Double-click the zip and drag Myna into Applications.
+- Open Myna. macOS says it can't check it, because Myna isn't sold through Apple. Click **Done**, go to System Settings › Privacy & Security, scroll down and click **Open Anyway**. You only do this once.
+- A small bird appears in the menu bar at the top of the screen. That's Myna.
 
-1. Download `Myna-android.apk` on the phone and open it. Allow your browser or Files app to install apps when asked.
-2. On the Mac, Myna menu › **Pair Phone…**, and scan the code with the phone's camera. Allow what Myna asks for. Texts and calls are optional; the webcam works without them.
-3. For calls on speaker, allow Myna to manage ongoing calls once, from a computer with `adb`: `adb shell appops set com.truthofmatthew.myna MANAGE_ONGOING_CALLS allow`.
+**2. On the phone** (Android 12 or later)
 
-**Chrome or Edge**
+- Open this page on the phone and download [`Myna-android.apk`](https://github.com/truthofmatthew/myna/releases/latest/download/Myna-android.apk).
+- Open the file. Android asks whether your browser may install apps; allow it, then tap **Install**.
+- Phone and Mac need to be on the same Wi-Fi, or the Mac on the phone's hotspot.
+- On the Mac, click the bird › **Pair Phone…**. Point the phone's camera app at the code and tap the link it shows; Myna opens and pairs. Allow what Myna asks for. Texts and calls are optional; the camera works without them.
 
-Download `Myna-chrome-extension.zip` and unzip it. Open `chrome://extensions` (or `edge://extensions`), turn on Developer mode, choose **Load unpacked** and pick the unzipped folder. In Meet, pick **Myna Front Camera (phone)** and **Myna Mic (phone)**.
+**3. For Google Meet** (Chrome or Edge)
 
-### Build it yourself
+- Download [`Myna-chrome-extension.zip`](https://github.com/truthofmatthew/myna/releases/latest/download/Myna-chrome-extension.zip) and double-click it.
+- Type `chrome://extensions` in the address bar, turn on **Developer mode** (top right), click **Load unpacked** and pick the unzipped folder.
 
-You need Xcode 16 or later, [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`), Android Studio (for its JDK and SDK) and `adb`.
+**Using it**
 
-- **Mac:** in `mac/project.yml`, set `DEVELOPMENT_TEAM` to your own Apple team ID and `PRODUCT_BUNDLE_IDENTIFIER` to your own bundle ID, then run `mac/install.sh`. It builds a Release copy, puts it in `/Applications` and opens it.
-- **Phone:** turn on USB debugging and plug the phone in. In `android/`, run `./gradlew assembleDebug`, then `adb install app/build/outputs/apk/debug/app-debug.apk`. On Samsung phones that use Dual Apps or a Secure Folder, add `--user 0`, or a second copy of Myna appears there. A self-built copy and the downloaded APK are signed with different keys, so uninstall one before installing the other.
-- **Extension:** load the `chrome` folder unpacked, as above.
+- **Texts:** click the bird › **Messages…**. Pick a conversation and type. New texts show up as Mac notifications you can reply to.
+- **Calls:** an incoming call pops up on the Mac with Answer and Decline. To call someone, open their conversation and click the phone button. You talk through the phone's loudspeaker.
+- **Camera in Meet:** keep Myna open on the phone. In a Meet call, open settings › Video and pick **Myna Front Camera (phone)**, and under Audio pick **Myna Mic (phone)**.
+- **Ads:** in Messages, click **Find Ads**, choose an AI in Settings, then **Check Senders**. Tick the ones to block.
+- After the phone restarts, open Myna on it once.
+
+### For developers
+
+- **Verify the downloads:** `shasum -a 256 -c SHA256SUMS.txt` against the file in the release.
+- **Skip Gatekeeper's prompt:** `xattr -dr com.apple.quarantine /Applications/Myna.app`. The Mac builds are ad-hoc signed with the hardened runtime, not notarized.
+- **Sideload with adb:** `adb install --user 0 Myna-android.apk`. `--user 0` keeps a second copy out of Samsung's Dual Apps and Secure Folder.
+- **Calls on speaker** need one permission only `adb` can give: `adb shell appops set com.truthofmatthew.myna MANAGE_ONGOING_CALLS allow`.
+- **Build it yourself:** you need Xcode 16 or later, [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`), Android Studio (for its JDK and SDK) and `adb`.
+  - Mac: in `mac/project.yml`, set `DEVELOPMENT_TEAM` and `PRODUCT_BUNDLE_IDENTIFIER` to your own, then run `mac/install.sh`. It builds a Release copy, puts it in `/Applications` and opens it.
+  - Phone: in `android/`, run `./gradlew assembleDebug`, then `adb install --user 0 app/build/outputs/apk/debug/app-debug.apk`. Release builds are signed only when `local.properties` has `releaseKeystoreProperties=<path to keystore.properties>`. A self-built copy and the downloaded APK use different keys, so uninstall one before installing the other.
+  - Extension: load the `chrome` folder unpacked.
+- **How the pieces talk:** the phone and Mac find each other over Bonjour (`_myna._tcp`) and talk over one TCP connection of length-prefixed frames, encrypted with AES-256-GCM. The keys come from the pairing key in the QR code, via HKDF. The extension reads camera and mic from the Mac app on `127.0.0.1:8737`. Messages are in [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ## Known limits
 
